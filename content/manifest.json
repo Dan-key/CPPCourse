@@ -1,0 +1,58 @@
+{
+  "title": "Трек системного программиста",
+  "stages": [
+    {
+      "id": "stage1",
+      "title": "Этап 1. Фундамент",
+      "modules": [
+        { "id": "f1", "title": "Ф1. C для системного кода", "tag": "в основном есть", "file": "modules/01-F1-c-for-system-code.md", "status": "ready" },
+        { "id": "f2", "title": "Ф2. Linux API и системные вызовы", "tag": "частично есть", "file": "modules/02-F2-linux-api-syscalls.md", "status": "ready" },
+        { "id": "f3", "title": "Ф3. Процессы, потоки, память, ELF", "tag": "в основном есть", "file": null, "status": "planned" },
+        { "id": "f4", "title": "Ф4. Инструменты отладки", "tag": "есть", "file": null, "status": "planned" }
+      ]
+    },
+    {
+      "id": "stage2a",
+      "title": "Этап 2A. Userspace-ремесло",
+      "modules": [
+        { "id": "c1", "title": "C1. Конкурентность и модель памяти", "tag": "закрепить", "file": null, "status": "planned" },
+        { "id": "c2", "title": "C2. epoll и io_uring", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "c3", "title": "C3. IPC и разделяемая память", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "c4", "title": "C4. Сигналы, таймеры, inotify", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "c5", "title": "C5. Демоны и сервисы", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "c6", "title": "C6. Производительность", "tag": "частично есть", "file": null, "status": "planned" }
+      ]
+    },
+    {
+      "id": "stage2b",
+      "title": "Этап 2B. Сторона ядра",
+      "modules": [
+        { "id": "k1", "title": "K1. Драйверы символьных устройств", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "k2", "title": "K2. Синхронизация в ядре", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "k3", "title": "K3. Прерывания и отложенная работа", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "k4", "title": "K4. Память ядра", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "k5", "title": "K5. VFS и псевдо-ФС", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "k6", "title": "K6. netfilter и сетевой стек", "tag": "новое", "file": null, "status": "planned" },
+        { "id": "k7", "title": "K7. Трассировка из ядра", "tag": "частично есть", "file": null, "status": "planned" }
+      ]
+    },
+    {
+      "id": "stage3",
+      "title": "Этап 3. Специализация",
+      "modules": [
+        { "id": "spec-a", "title": "(a) Ядро и драйверы", "tag": "сильный фит", "file": null, "status": "planned" },
+        { "id": "spec-b", "title": "(b) Embedded / device Linux", "tag": "сильный фит", "file": null, "status": "planned" },
+        { "id": "spec-c", "title": "(c) Высокопроизв. сетевые системы", "tag": null, "file": null, "status": "planned" },
+        { "id": "spec-d", "title": "(d) Хранилище и БД", "tag": null, "file": null, "status": "planned" },
+        { "id": "spec-e", "title": "(e) Инженерия дистрибутива", "tag": null, "file": null, "status": "planned" }
+      ]
+    },
+    {
+      "id": "capstone",
+      "title": "Капстоун",
+      "modules": [
+        { "id": "capstone", "title": "Сквозной капстоун хребта", "tag": null, "file": null, "status": "planned" }
+      ]
+    }
+  ]
+}
