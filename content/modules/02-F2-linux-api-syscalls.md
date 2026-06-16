@@ -363,18 +363,895 @@ if (fork() == 0) {
 
 ---
 
-## 8. Практика модуля (сводно)
+## 8. Каналы (pipes) и FIFO — базовый IPC
 
-1. **Сырые syscall-обёртки** (`my_read`/`my_write`/`my_open`/`my_close` через `syscall(2)`) + `strace`-сравнение с glibc-версиями. *(§1)*
-2. **`die()`** — единая идиома обработки ошибок через `errno`/`strerror`, используемая во всех следующих практиках. *(§2)*
-3. **`read_full`/`write_full`** с корректной обработкой `EINTR` и partial I/O + тест с сигналами под `strace -f`. *(§3)* — это прямой автотестируемый артефакт (понадобится почти везде дальше).
-4. **vDSO-бенчмарк**: `clock_gettime` через glibc vs через прямой `syscall()`, подтверждённый `strace -c`. *(§4)*
-5. **Общий offset через `dup`/`fork`**, демонстрация `O_APPEND` vs без него под конкурентной записью. *(§5)*
-6. **Чтение man-страниц** — таблица для 5 syscalls: успех/ошибка/3 errno/1 деталь из NOTES. *(§7)*
+### 8.1 `pipe()` — пара дескрипторов, однонаправленный поток
+
+```c
+#include <unistd.h>
+int pipe(int pipefd[2]);   // pipefd[0] = read-end, pipefd[1] = write-end
+```
+
+`pipe()` создаёт **буфер в ядре** и возвращает два fd: `pipefd[0]` (чтение) и `pipefd[1]` (запись). Данные текут только в одном направлении: пишешь в `[1]`, читаешь из `[0]`.
+
+**Буфер ядра** на Linux — обычно 65 536 байт (64 KiB, начиная с ядра 2.6.11). Если пишешь быстрее, чем читают — `write()` блокируется. Если pipe пуст — `read()` блокируется.
+
+**`PIPE_BUF` — гарантия атомарности.** По POSIX запись ≤ `PIPE_BUF` байт (минимум 512, на Linux обычно 4096) **атомарна**: если несколько процессов пишут в один pipe, записи ≤ `PIPE_BUF` не перемежаются (или записаны целиком, или не записаны вовсе). Для записей > `PIPE_BUF` гарантий нет — данные могут перемешаться.
+
+```c
+#include <limits.h>
+printf("PIPE_BUF = %d\n", PIPE_BUF);   // обычно 4096
+```
+
+### 8.2 Паттерн: родитель → потомок через pipe
+
+Критически важный порядок действий:
+
+```c
+int pfd[2];
+pipe(pfd);       // СНАЧАЛА pipe — ДО fork
+
+pid_t pid = fork();
+if (pid == 0) {
+    /* Потомок: читает. Закрыть write-конец — ОБЯЗАТЕЛЬНО */
+    close(pfd[1]);
+    char buf[256];
+    ssize_t n = read(pfd[0], buf, sizeof(buf));
+    /* ... обработка ... */
+    close(pfd[0]);
+    _exit(0);
+} else {
+    /* Родитель: пишет. Закрыть read-конец */
+    close(pfd[0]);
+    write(pfd[1], "hello", 5);
+    close(pfd[1]);   // сигнализируем EOF
+    waitpid(pid, NULL, 0);
+}
+```
+
+**Почему `pipe()` до `fork()`?** `fork()` копирует fd-таблицу: оба конца pipe будут у обоих процессов. После fork каждый процесс закрывает тот конец, который ему не нужен.
+
+### 8.3 EOF через pipe: когда `read()` вернёт 0
+
+`read()` вернёт 0 (EOF) только тогда, когда **все** write-концы данного pipe закрыты. Это самая частая ошибка при работе с pipe:
+
+```c
+// ОШИБКА: потомок не закрыл write-конец
+if (fork() == 0) {
+    // close(pfd[1]);  ← забыли
+    while (read(pfd[0], buf, sz) > 0) { /* ... */ }
+    // Зависнет навсегда: родитель закрыл pfd[1], но копия
+    // pfd[1] у потомка всё ещё открыта — EOF никогда не придёт
+    _exit(0);
+}
+```
+
+Правило: после `fork()` каждый процесс должен немедленно закрыть те концы pipe, которые он не использует.
+
+### 8.4 Перенаправление через `dup2()`: основа shell-pipeline
+
+`dup2(oldfd, newfd)` делает `newfd` копией `oldfd`, закрывая `newfd` если он был открыт. Этим пользуется shell для `cmd1 | cmd2`:
+
+```c
+/* cmd1: перенаправить stdout в write-конец pipe */
+dup2(pfd[1], STDOUT_FILENO);
+close(pfd[0]);
+close(pfd[1]);   // оригинал — дублирован, закрыть
+execvp("cmd1", argv1);
+
+/* cmd2: перенаправить stdin из read-конца pipe */
+dup2(pfd[0], STDIN_FILENO);
+close(pfd[1]);
+close(pfd[0]);
+execvp("cmd2", argv2);
+```
+
+После `dup2` + `close` + `exec` нет «лишних» копий концов pipe — EOF придёт корректно.
+
+**Полный пример `cmd1 | cmd2`:**
+
+```c
+#define _GNU_SOURCE
+#include <unistd.h>
+#include <sys/wait.h>
+#include <stdio.h>
+
+void run_pipeline(char *cmd1[], char *cmd2[]) {
+    int pfd[2];
+    if (pipe(pfd) == -1) { perror("pipe"); return; }
+
+    pid_t p1 = fork();
+    if (p1 == 0) {
+        dup2(pfd[1], STDOUT_FILENO);
+        close(pfd[0]); close(pfd[1]);
+        execvp(cmd1[0], cmd1);
+        perror("exec cmd1"); _exit(1);
+    }
+
+    pid_t p2 = fork();
+    if (p2 == 0) {
+        dup2(pfd[0], STDIN_FILENO);
+        close(pfd[1]); close(pfd[0]);
+        execvp(cmd2[0], cmd2);
+        perror("exec cmd2"); _exit(1);
+    }
+
+    /* Родитель: закрыть оба конца (у детей свои копии через dup2) */
+    close(pfd[0]); close(pfd[1]);
+    waitpid(p1, NULL, 0);
+    waitpid(p2, NULL, 0);
+}
+```
+
+### 8.5 FIFO — именованный канал
+
+FIFO (named pipe) — как pipe, но имеет путь в файловой системе, поэтому пригоден для IPC между **несвязанными** процессами (не обязательно родитель-потомок).
+
+```c
+#include <sys/stat.h>
+mkfifo("/tmp/myfifo", 0600);   // создать FIFO
+
+/* Процесс A: писатель */
+int fd = open("/tmp/myfifo", O_WRONLY);   // блокирует до появления читателя
+write(fd, data, n);
+close(fd);
+
+/* Процесс B: читатель */
+int fd = open("/tmp/myfifo", O_RDONLY);   // блокирует до появления писателя
+read(fd, buf, sz);
+close(fd);
+```
+
+**Поведение блокировки при `open()`:** без `O_NONBLOCK` открытие FIFO на чтение блокирует процесс до тех пор, пока кто-то не откроет тот же FIFO на запись, и наоборот. С `O_NONBLOCK` открытие на чтение без писателя возвращает fd немедленно; открытие на запись без читателя немедленно возвращает `ENXIO`.
+
+### 8.6 Ограничения pipes
+
+| Ограничение | Деталь |
+|---|---|
+| Только байтовый поток | Нет границ сообщений — читатель не знает, где заканчивается одна «запись» и начинается другая. Для сообщений — UNIX-сокет (SOCK_SEQPACKET/SOCK_DGRAM) или протокол поверх pipe |
+| Только родственные процессы | Обычный pipe виден только через наследование fd. Для несвязанных — FIFO или socket |
+| Ограниченный буфер | 64 KiB на Linux — при медленном читателе писатель заблокируется |
+| Нет seekа | pipe не seekable (это очередь, не файл) |
+
+> **Практика 8.A:** запусти дочерний процесс через `fork()` + `exec()` (`/bin/cat /etc/os-release` или аналог), читай его `stdout` через pipe в родителе и считай строки (количество символов `'\n'`). Выведи счётчик. Это базовый `popen()`-паттерн вручную.
 
 ---
 
-## 9. Самопроверка модуля Ф2
+## 9. `mmap` — отображение файлов и анонимная память
+
+### 9.1 Что такое `mmap`
+
+```c
+#include <sys/mman.h>
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+int   munmap(void *addr, size_t length);
+```
+
+`mmap()` отображает файл (или анонимную память) в виртуальное адресное пространство процесса. После этого читаешь/пишешь данные через обычные указатели — ядро сáмо загружает страницы из файла при обращении (page fault) и записывает изменения обратно при необходимости (при `MAP_SHARED`).
+
+Ядро подгружает страницы **lazily**: `mmap()` сам по себе не читает данные из файла. Первое обращение к странице вызывает page fault — ядро загружает её, выполнение продолжается прозрачно.
+
+### 9.2 `MAP_SHARED` vs `MAP_PRIVATE`
+
+| Флаг | Семантика |
+|---|---|
+| `MAP_SHARED` | Изменения видны другим процессам, отобразившим тот же файл; записываются в файл (при условии `msync()` или при завершении) |
+| `MAP_PRIVATE` | Copy-on-write: изменения видны только текущему процессу, в файл не попадают. Используется загрузчиком ELF для маппинга кода/данных исполняемого файла |
+
+```c
+int fd = open("data.bin", O_RDWR);
+struct stat st;
+fstat(fd, &st);
+
+/* MAP_SHARED: изменения идут в файл */
+char *p = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+p[0] = 'X';   // изменит файл на диске (после msync/munmap)
+
+/* MAP_PRIVATE: copy-on-write, файл не тронут */
+char *q = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+q[0] = 'Y';   // видно только нам
+
+munmap(p, st.st_size);
+munmap(q, st.st_size);
+close(fd);
+```
+
+### 9.3 `MAP_ANONYMOUS` — анонимная память
+
+```c
+void *buf = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+```
+
+Не привязано к файлу: `fd = -1`, `offset = 0`. Начальное содержимое — нули (ядро даёт zero-filled страницы). Используется для больших аллокаций в glibc `malloc()`: когда запрос > `MMAP_THRESHOLD` (обычно 128 KiB), `malloc` запрашивает память через `mmap(MAP_ANONYMOUS)`, а не через `brk()`. При `free()` эта память немедленно возвращается ядру через `munmap()` — в отличие от `brk()`-памяти, которая не возвращается сразу.
+
+### 9.4 Производительность: `mmap` vs `read()`/`write()`
+
+| Сценарий | Рекомендация |
+|---|---|
+| Случайный доступ к большому файлу | `mmap` — нет копирования данных в userspace-буфер, ядро управляет страницами |
+| Последовательное чтение большого файла | `read()` с `madvise(MADV_SEQUENTIAL)` или просто `read()` — page cache работает не хуже |
+| Файл целиком в памяти, многократный доступ | `mmap` + `mlock()` (зафиксировать страницы в RAM) |
+| Малые файлы (< 4 KiB) | `read()` — накладные расходы `mmap` не оправданы |
+| Конкурентная запись нескольких процессов | Осторожно: `MAP_SHARED` требует внешней синхронизации |
+
+Главное преимущество `mmap` — **zero-copy**: ядро отдаёт данные прямо из page cache в адресное пространство процесса, без копирования в промежуточный буфер `read()`.
+
+### 9.5 `msync()` — синхронизация изменений на диск
+
+```c
+int msync(void *addr, size_t length, int flags);
+// MS_SYNC — дождаться записи на диск (блокирует)
+// MS_ASYNC — запланировать запись (не блокирует)
+// MS_INVALIDATE — сбросить кэшированные данные (перечитать с диска)
+```
+
+Для `MAP_SHARED`: без `msync()` **не гарантировано**, что изменения попадут на диск при crash (аппаратный сбой). При штатном завершении ядро флашит dirty pages, но для надёжности нужен явный `msync(MS_SYNC)` перед критическими точками.
+
+```c
+/* Правильный паттерн для надёжной записи через mmap */
+memcpy(mapped_ptr, data, size);
+if (msync(mapped_ptr, size, MS_SYNC) == -1) {
+    perror("msync");
+}
+```
+
+### 9.6 `munmap()` — освобождение отображения
+
+```c
+munmap(addr, length);   // освобождает виртуальную память
+close(fd);              // закрывает файл — ОТДЕЛЬНО от munmap!
+```
+
+`munmap()` не закрывает `fd`, который был передан в `mmap()`. Они независимы. Частичное `munmap()` легально (отображение произвольного диапазона), но `addr` должен быть выровнен на страницу.
+
+### 9.7 `mprotect()` — изменение прав на регион
+
+```c
+#include <sys/mman.h>
+int mprotect(void *addr, size_t len, int prot);
+// PROT_READ | PROT_WRITE | PROT_EXEC | PROT_NONE
+```
+
+Изменяет права доступа к уже отображённому региону. Базовое применение:
+- **JIT-компилятор**: аллоцировать `MAP_ANONYMOUS` с `PROT_READ|PROT_WRITE`, заполнить машинным кодом, затем `mprotect(PROT_READ|PROT_EXEC)` — теперь можно вызывать как функцию.
+- **Guard pages**: `mprotect(PROT_NONE)` создаёт страницу-ловушку, доступ к которой вызывает `SIGSEGV` — используется для детекции выхода за стек или буфер.
+
+Адрес `addr` должен быть выровнен на страницу (`PAGE_SIZE`, обычно 4096).
+
+### 9.8 `madvise()` — подсказки ядру
+
+```c
+int madvise(void *addr, size_t length, int advice);
+```
+
+| Флаг | Действие |
+|---|---|
+| `MADV_SEQUENTIAL` | Ядро будет читать страницы вперёд (read-ahead) — ожидается последовательный доступ |
+| `MADV_RANDOM` | Отключить read-ahead — доступ будет случайным |
+| `MADV_WILLNEED` | Запустить prefetch прямо сейчас — страницы скоро понадобятся |
+| `MADV_DONTNEED` | Ядро может освободить эти страницы — если они понадобятся снова, будут прочитаны заново из файла |
+| `MADV_FREE` | (Linux 4.5+) страницы свободны, но содержимое ещё доступно до нехватки RAM |
+
+```c
+/* Подсказка для последовательного чтения большого файла */
+madvise(p, file_size, MADV_SEQUENTIAL);
+```
+
+Это не обязательства, а подсказки — ядро может игнорировать.
+
+### 9.9 Ловушки и нюансы
+
+**Файл нулевой длины:** нельзя `mmap()` файл с `length = 0` — системный вызов вернёт `EINVAL`. Нужно проверять `st_size > 0` после `fstat()`.
+
+**`MAP_FAILED`, не `NULL`:** при ошибке `mmap()` возвращает `(void *)-1` (`MAP_FAILED`), а **не** `NULL`. Классическая ошибка — сравнивать с `NULL`:
+
+```c
+void *p = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+if (p == MAP_FAILED) {   // ПРАВИЛЬНО
+    perror("mmap");
+}
+// if (p == NULL) — НЕПРАВИЛЬНО: MAP_FAILED == (void*)-1
+```
+
+**Выравнивание `offset`:** параметр `offset` должен быть кратен `PAGE_SIZE` (обычно 4096). Для файлов с произвольным смещением используй `offset & ~(PAGE_SIZE-1)` и корректируй указатель.
+
+**`SIGBUS` при truncate под mmap:** если `ftruncate()` уменьшает файл, а mapping всё ещё покрывает «срезанные» страницы — обращение к ним вызовет `SIGBUS` (не `SIGSEGV`). Это серьёзная ловушка при конкурентном изменении размера файла.
+
+### 9.10 `/proc/self/maps` — карта памяти процесса
+
+```
+$ cat /proc/self/maps
+55a1b4c01000-55a1b4c03000 r-xp 00000000 08:01 1234567   /bin/cat
+...
+7f9a12000000-7f9a13000000 rw-p 00000000 00:00 0          [heap]
+7ffd2b9fe000-7ffd2ba00000 r-xp 00000000 00:00 0          [vdso]
+7ffd2ba03000-7ffd2ba04000 rw-p 00000000 00:00 0          [stack]
+```
+
+Каждая строка: `адрес-диапазон права offset dev inode путь`. Права: `r` читаемый, `w` записываемый, `x` исполняемый, `p` private (COW), `s` shared.
+
+```c
+/* Прочитать карту памяти программно */
+FILE *f = fopen("/proc/self/maps", "r");
+char line[256];
+while (fgets(line, sizeof(line), f)) {
+    fputs(line, stdout);
+}
+fclose(f);
+```
+
+> **Практика 9.A:** открой существующий текстовый файл, отобрази через `mmap(MAP_SHARED, PROT_READ|PROT_WRITE)`, измени первый байт через указатель, вызови `msync(MS_SYNC)`, закрой fd и mapping. Проверь содержимое файла через отдельный `open()+read()`. Это докажет, что изменения через указатель реально попали на диск.
+
+---
+
+## 10. Блокировки файлов
+
+### 10.1 Зачем нужна координация
+
+Несколько процессов могут одновременно открыть один и тот же файл и писать в него. Без координации — гонка: данные перемежаются, файл повреждается. Два механизма в Linux: `flock()` и `fcntl()` POSIX locks.
+
+### 10.2 `flock()` — BSD-стиль блокировки
+
+```c
+#include <sys/file.h>
+int flock(int fd, int operation);
+// LOCK_SH — shared (read lock): несколько процессов одновременно
+// LOCK_EX — exclusive (write lock): только один процесс
+// LOCK_UN — снять блокировку
+// LOCK_NB — или сразу, или EWOULDBLOCK (без ожидания)
+```
+
+```c
+int fd = open("data.txt", O_RDWR);
+
+/* Получить exclusive lock (или подождать) */
+flock(fd, LOCK_EX);
+
+/* ... критическая секция ... */
+
+flock(fd, LOCK_UN);   // или просто close(fd) — тоже снимает
+close(fd);
+```
+
+**Семантика наследования.** Блокировка `flock()` привязана к **open file description** (уровень 2 трёхуровневой модели, §5.1), а не к конкретному номеру fd:
+- После `dup()` или `fork()` два fd ссылаются на одно описание → одна блокировка. Закрытие одного fd не снимает блокировку, пока хотя бы один fd ссылается на то же описание.
+- Два отдельных `open()` → два независимых описания → независимые блокировки.
+
+### 10.3 `fcntl()` locks — POSIX byte-range locking
+
+```c
+#include <fcntl.h>
+struct flock fl = {
+    .l_type   = F_WRLCK,      // F_RDLCK / F_WRLCK / F_UNLCK
+    .l_whence = SEEK_SET,
+    .l_start  = 0,             // начало диапазона
+    .l_len    = 0,             // 0 = до конца файла
+};
+fcntl(fd, F_SETLKW, &fl);     // F_SETLK (неблокирующий) или F_SETLKW (блокирующий)
+```
+
+**Отличия от `flock()`:**
+- Блокирует **диапазон байт** (не весь файл) — можно одновременно блокировать разные записи одного файла.
+- Привязан к **паре (pid, fd)**, а не к open file description. Это критически важно:
+
+```c
+/* ЛОВУШКА в многопоточном коде: */
+int fd1 = open("x", O_RDWR);
+int fd2 = open("x", O_RDWR);   // другое открытие того же файла
+
+struct flock fl = { .l_type = F_WRLCK, .l_whence = SEEK_SET, .l_start=0, .l_len=0 };
+fcntl(fd1, F_SETLK, &fl);  // получили lock через fd1
+
+close(fd2);   // ВНИМАНИЕ: закрытие ЛЮБОГО fd к этому файлу снимает ВСЕ fcntl-locks
+              // этого процесса на файл, даже если lock взят через fd1!
+```
+
+Это задокументированное поведение POSIX. В многопоточном коде, где потоки могут независимо открывать и закрывать файлы, `fcntl()` locks крайне опасны.
+
+**Проверить, кто держит lock:**
+
+```c
+struct flock fl = { .l_type = F_WRLCK, .l_whence = SEEK_SET, .l_start=0, .l_len=0 };
+fcntl(fd, F_GETLK, &fl);
+if (fl.l_type == F_UNLCK) {
+    printf("файл не заблокирован\n");
+} else {
+    printf("файл заблокирован процессом PID=%d\n", (int)fl.l_pid);
+}
+```
+
+### 10.4 Ловушки и ограничения
+
+**`flock()` не работает через NFS.** Исторически `flock()` не передаётся по сети — на NFS-смонтированных ФС блокировка может быть тихо проигнорирована. `fcntl()` locks работают по NFS с оговорками (зависит от версии NFS и настроек nlm/nlockmgr).
+
+**Advisory locks, не mandatory.** На Linux `flock()` и `fcntl()` — **advisory**: ядро не запрещает другим процессам работать с файлом без взятия lock. Все участники должны соблюдать протокол. Mandatory locking (через `MS_MANDLOCK` на mountpoint + специальные биты разрешений) на практике не используется.
+
+**Hardlinks и разные mountpoints:** ни `flock()`, ни `fcntl()` не защищают от доступа через hardlink или другой mountpoint того же устройства.
+
+### 10.5 PID-файл — single-instance guard
+
+Классический паттерн для демонов: гарантировать, что запущен только один экземпляр.
+
+```c
+#include <sys/file.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <errno.h>
+
+#define PID_FILE "/var/run/myapp.pid"
+
+int acquire_pid_lock(void) {
+    int fd = open(PID_FILE, O_CREAT | O_RDWR, 0644);
+    if (fd == -1) return -1;
+
+    /* Неблокирующий exclusive lock */
+    if (flock(fd, LOCK_EX | LOCK_NB) == -1) {
+        if (errno == EWOULDBLOCK) {
+            fprintf(stderr, "already running\n");
+        }
+        close(fd);
+        return -1;
+    }
+
+    /* Записать свой PID */
+    char buf[32];
+    int n = snprintf(buf, sizeof(buf), "%d\n", getpid());
+    ftruncate(fd, 0);
+    write(fd, buf, (size_t)n);
+    /* fd оставить открытым — lock держится пока fd открыт */
+    return fd;
+}
+```
+
+**Почему это надёжно:** при завершении процесса (в том числе при crash, SIGKILL) ядро автоматически закрывает все fd → `flock()` lock снимается → следующий экземпляр сможет взять lock. Нет «протухшего» lock-файла, который нужно вручную чистить.
+
+### 10.6 Advisory vs mandatory locking
+
+Linux поддерживает mandatory locking: монтировать с `MS_MANDLOCK`, выставить `chmod g+s, g-x` на файл — тогда ядро будет проверять lock при каждом `open`/`read`/`write`. На практике эта функциональность deprecated (у неё сложная семантика и баги), не используется. Для реального IPC используют POSIX semaphores, futex, или просто `flock()` с advisory семантикой.
+
+> **Практика 10.A:** реализуй функции `acquire_lock(path)` → `int fd` и `release_lock(fd)`. В `acquire_lock`: `open(O_CREAT|O_RDWR)` + `flock(LOCK_EX|LOCK_NB)`, при `EWOULDBLOCK` вернуть `-1`. В `release_lock`: `close(fd)` (flock снимается автоматически). Запусти два экземпляра конкурентно — второй должен получить `-1`.
+
+---
+
+## 11. Операции с директориями и ФС
+
+### 11.1 `opendir` / `readdir` / `closedir`
+
+```c
+#include <dirent.h>
+DIR *opendir(const char *path);
+struct dirent *readdir(DIR *dirp);   // NULL при ошибке или конце
+int closedir(DIR *dirp);
+```
+
+`struct dirent` основные поля:
+
+```c
+struct dirent {
+    ino_t          d_ino;    /* номер inode */
+    unsigned char  d_type;   /* тип записи (не всегда доступен) */
+    char           d_name[]; /* имя файла, null-terminated */
+};
+```
+
+**`d_type` не всегда доступен.** На FAT, некоторых сетевых ФС, XFS с определёнными конфигурациями `d_type == DT_UNKNOWN`. Всегда предусматривай fallback через `lstat()`:
+
+```c
+DIR *d = opendir(path);
+struct dirent *e;
+while ((e = readdir(d)) != NULL) {
+    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
+        continue;
+
+    unsigned char type = e->d_type;
+    if (type == DT_UNKNOWN) {
+        /* Fallback: используй lstat */
+        struct stat st;
+        char fullpath[PATH_MAX];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, e->d_name);
+        lstat(fullpath, &st);
+        if (S_ISDIR(st.st_mode))  type = DT_DIR;
+        else if (S_ISREG(st.st_mode)) type = DT_REG;
+        else if (S_ISLNK(st.st_mode)) type = DT_LNK;
+    }
+    /* ... */
+}
+closedir(d);
+```
+
+### 11.2 `stat()` / `lstat()` / `fstat()` — метаданные файла
+
+```c
+#include <sys/stat.h>
+int stat(const char *path, struct stat *st);   // следует symlink
+int lstat(const char *path, struct stat *st);  // НЕ следует symlink (возвращает данные о самой ссылке)
+int fstat(int fd, struct stat *st);            // по fd (атомарнее, нет TOCTOU)
+```
+
+Основные поля `struct stat`:
+
+```c
+struct stat {
+    mode_t st_mode;    /* тип + права: S_ISREG/S_ISDIR/S_ISLNK/S_ISCHR/S_ISBLK */
+    off_t  st_size;    /* размер в байтах (для регулярных файлов) */
+    time_t st_mtime;   /* время последней модификации */
+    nlink_t st_nlink;  /* число жёстких ссылок */
+    uid_t  st_uid;     /* владелец */
+    ino_t  st_ino;     /* номер inode */
+};
+```
+
+Макросы проверки типа:
+
+```c
+S_ISREG(st.st_mode)   /* обычный файл */
+S_ISDIR(st.st_mode)   /* директория */
+S_ISLNK(st.st_mode)   /* символическая ссылка (только с lstat!) */
+S_ISCHR(st.st_mode)   /* символьное устройство */
+S_ISBLK(st.st_mode)   /* блочное устройство */
+```
+
+`fstat()` по fd безопаснее: не уязвим к TOCTOU (см. §11.3) и не требует разрешения на поиск в директории.
+
+### 11.3 TOCTOU — Time-Of-Check-Time-Of-Use
+
+Классическая race condition при работе с файлами:
+
+```c
+/* НЕБЕЗОПАСНО: race condition */
+if (access(path, W_OK) == 0) {     // ← check
+    int fd = open(path, O_WRONLY); // ← use: между этими строками
+                                   //   атакующий может подменить path
+                                   //   на symlink к /etc/passwd!
+}
+```
+
+Между `access()` и `open()` другой процесс (или атакующий) может изменить что ссылается на `path` — например, подставить symlink на привилегированный файл.
+
+**Лечение:** открывай файл сразу через `open()`, затем проверяй через `fstat()`:
+
+```c
+/* БЕЗОПАСНО: */
+int fd = open(path, O_WRONLY | O_NOFOLLOW);  // O_NOFOLLOW: не следовать symlink
+if (fd == -1) { /* ошибка или symlink */ }
+struct stat st;
+fstat(fd, &st);
+if (!S_ISREG(st.st_mode)) { close(fd); /* не файл */ }
+/* Теперь работаем с fd — атомарно, без TOCTOU */
+```
+
+`O_NOFOLLOW` — флаг `open()`, который возвращает `ELOOP` если последний компонент пути является symlink. Защищает от symlink-подмен в check-less коде.
+
+### 11.4 `mkdir()` / `rmdir()` / `rename()` — атомарность
+
+```c
+mkdir("newdir", 0755);
+rmdir("emptydir");              // только пустые директории
+rename("tmpfile", "target");    // атомарная замена
+```
+
+**`rename()` атомарна** — это гарантировано POSIX и реализовано в Linux. `rename("new.tmp", "target")` либо полностью заменит `target` на `new.tmp`, либо ничего не произойдёт. Это основа паттерна «атомарного обновления файла»:
+
+```c
+/* Атомарная запись файла без риска частично записанного состояния */
+int tmp_fd = open("target.tmp", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+write(tmp_fd, data, size);
+fsync(tmp_fd);    // сначала данные на диск
+close(tmp_fd);
+rename("target.tmp", "target");   // потом атомарная замена
+```
+
+**Ограничение:** `rename()` не работает между устройствами (`EXDEV`). `rename()` не атомальна между разными ФС — нужен `copy + rename` на одной ФС.
+
+### 11.5 Рекурсивный обход: `nftw()` или вручную
+
+**`nftw()` (nftw = file tree walk):**
+
+```c
+#include <ftw.h>
+int nftw(const char *path, callback_fn fn, int nopenfd, int flags);
+```
+
+```c
+int walk_cb(const char *fpath, const struct stat *sb,
+            int typeflag, struct FTW *ftwbuf) {
+    if (typeflag == FTW_F)   printf("файл: %s (%lld байт)\n", fpath, (long long)sb->st_size);
+    if (typeflag == FTW_D)   printf("дир:  %s\n", fpath);
+    return 0;   // ненулевое значение останавливает обход
+}
+
+nftw("/home/user", walk_cb, 16 /* макс. открытых fd */, FTW_PHYS /* не следовать symlinks */);
+```
+
+`FTW_PHYS` — не следовать symlinks (эквивалент `lstat()` вместо `stat()`). `nopenfd` — сколько fd nftw может держать открытыми одновременно.
+
+**Ручной обход** для полного контроля:
+
+```c
+void walk(const char *path) {
+    DIR *d = opendir(path);
+    if (!d) return;
+    struct dirent *e;
+    char child[PATH_MAX];
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name,".") == 0 || strcmp(e->d_name,"..") == 0) continue;
+        snprintf(child, sizeof(child), "%s/%s", path, e->d_name);
+        struct stat st;
+        lstat(child, &st);
+        if (S_ISDIR(st.st_mode)) walk(child);   // рекурсия
+        else if (S_ISREG(st.st_mode)) { /* обработать файл */ }
+    }
+    closedir(d);
+}
+```
+
+### 11.6 `inotify` — уведомления об изменениях ФС
+
+```c
+#include <sys/inotify.h>
+int inotify_init1(int flags);           // IN_NONBLOCK | IN_CLOEXEC
+int inotify_add_watch(int fd, const char *path, uint32_t mask);
+// mask: IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO
+```
+
+```c
+int ifd = inotify_init1(IN_CLOEXEC);
+inotify_add_watch(ifd, "/tmp/watched", IN_CREATE | IN_DELETE | IN_MODIFY);
+
+/* read() блокирует до события */
+char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+ssize_t n = read(ifd, buf, sizeof(buf));
+struct inotify_event *ev = (struct inotify_event *)buf;
+printf("событие: mask=0x%x, name=%s\n", ev->mask, ev->name);
+```
+
+`read()` на inotify fd возвращает один или несколько `struct inotify_event` подряд (variable-length из-за поля `name`). Этот fd можно добавить в `epoll`/`poll` — это ключевой мост в C4: сигналы и ФС-события объединяются в одном event loop через fd-интерфейс.
+
+### 11.7 Временные файлы безопасно
+
+```c
+/* ПРАВИЛЬНО: mkstemp — атомарно создаёт и открывает уникальный файл */
+char tmpl[] = "/tmp/myapp_XXXXXX";
+int fd = mkstemp(tmpl);   // tmpl модифицируется — имя файла
+/* tmpl теперь содержит реальное имя, fd открыт */
+unlink(tmpl);   // удалить после открытия, если имя не нужно
+
+/* ПРАВИЛЬНО: mkdtemp — то же для директорий */
+char dirtmpl[] = "/tmp/myapp_XXXXXX";
+char *dir = mkdtemp(dirtmpl);
+
+/* НЕПРАВИЛЬНО: tmpnam/tempnam — не использовать */
+char *tmp = tmpnam(NULL);   // race condition между tmpnam и open
+```
+
+`mkstemp()` возвращает открытый fd атомарно — нет TOCTOU. Паттерн `mkstemp()` + `unlink()` создаёт **анонимный временный файл**: fd открыт, но имя уже удалено. Файл будет удалён автоматически при закрытии fd (или при завершении процесса).
+
+> **Практика 11.A:** напиши функцию `dir_summary(path, &files, &dirs, &total_bytes)` — рекурсивный обход через `opendir()`/`readdir()`/`lstat()` (не `nftw()`). Протести на `/tmp` или специально созданной структуре директорий.
+
+---
+
+## 12. Сигналы — глубже
+
+> Базовые сведения о сигналах были в §3 (EINTR и обработчики). Этот раздел — механизм изнутри.
+
+### 12.1 `sigaction()` vs `signal()`
+
+```c
+#include <signal.h>
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+```
+
+`signal()` — устаревшая функция с **implementation-defined** семантикой: в разных системах после доставки сигнала обработчик может быть сброшен в `SIG_DFL` (BSD), или нет (Linux). Не использовать в новом коде.
+
+`struct sigaction`:
+
+```c
+struct sigaction {
+    void (*sa_handler)(int);                      // простой обработчик
+    void (*sa_sigaction)(int, siginfo_t *, void*); // расширенный (с SA_SIGINFO)
+    sigset_t sa_mask;    // маска сигналов, блокируемых на время обработчика
+    int sa_flags;
+};
+```
+
+Ключевые флаги `sa_flags`:
+
+| Флаг | Действие |
+|---|---|
+| `SA_RESTART` | Автоматически перезапускать syscalls, прерванные этим сигналом (где возможно) |
+| `SA_SIGINFO` | Использовать `sa_sigaction` вместо `sa_handler` — расширенная инфо через `siginfo_t` |
+| `SA_NODEFER` | Не блокировать сам сигнал во время обработчика (по умолчанию блокируется) |
+| `SA_RESETHAND` | Сбросить обработчик в `SIG_DFL` после первой доставки |
+| `SA_NOCLDWAIT` | (для SIGCHLD) не создавать зомби при завершении потомков |
+
+```c
+struct sigaction sa = {
+    .sa_handler = my_handler,
+    .sa_flags   = SA_RESTART,
+};
+sigemptyset(&sa.sa_mask);
+sigaddset(&sa.sa_mask, SIGUSR1);   // заблокировать SIGUSR1 на время обработчика
+sigaction(SIGTERM, &sa, NULL);
+```
+
+### 12.2 Async-signal-safety — что можно делать в обработчике
+
+Обработчик сигнала может прерваться **в любой момент** выполнения основного кода, в том числе внутри `malloc()`, `printf()`, любого mutex. Поэтому в обработчике можно вызывать **только async-signal-safe** функции — список в `man 7 signal-safety`.
+
+**Нельзя в обработчике:**
+- `malloc()` / `free()` — внутри может быть взят mutex
+- `printf()`, `fprintf()`, `fwrite()` — буферизация через глобальные структуры
+- любой `pthread_mutex_lock()` — deadlock если прерван в момент владения мьютексом
+- `exit()` — флашит буферы
+
+**Можно:**
+- `write()` (но не `printf()`) — напрямую в fd
+- изменить `volatile sig_atomic_t` переменную
+- `_exit()`, `kill()`, `sigprocmask()`
+- `open()`, `read()`, `close()` — async-signal-safe syscalls
+
+### 12.3 Self-pipe trick
+
+Проблема: event loop использует `select()`/`poll()`/`epoll_wait()` — они не перезапускаются с `SA_RESTART`. Сигнал прерывает их с `EINTR`, но event loop не знает, что именно произошло.
+
+**Решение — self-pipe:**
+
+```c
+int selfpipe[2];
+pipe(selfpipe);
+/* Сделать запись-конец неблокирующим */
+fcntl(selfpipe[1], F_SETFL, O_NONBLOCK);
+
+void signal_handler(int sig) {
+    /* async-signal-safe: write() и изменение sig_atomic_t — OK */
+    char byte = (char)sig;
+    write(selfpipe[1], &byte, 1);   // 1 байт в pipe — атомарно, не блокирует
+}
+
+/* В event loop: добавить selfpipe[0] в epoll/poll/select */
+/* При событии на selfpipe[0]: read() вынимает байт(ы), обрабатываем сигнал */
+```
+
+Сигнал превращается в событие fd — корректно объединяется с другими fd в event loop. Это канонический паттерн до появления `signalfd()`.
+
+### 12.4 `signalfd()` — сигналы как fd-события (Linux)
+
+```c
+#include <sys/signalfd.h>
+int signalfd(int fd, const sigset_t *mask, int flags);
+// fd = -1: создать новый fd
+// flags: SFD_NONBLOCK | SFD_CLOEXEC
+```
+
+```c
+sigset_t mask;
+sigemptyset(&mask);
+sigaddset(&mask, SIGTERM);
+sigaddset(&mask, SIGUSR1);
+
+/* СНАЧАЛА заблокировать сигналы нормальной доставкой */
+sigprocmask(SIG_BLOCK, &mask, NULL);
+
+/* Затем создать signalfd */
+int sfd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
+
+/* В event loop: read() когда sfd готов */
+struct signalfd_siginfo info;
+read(sfd, &info, sizeof(info));
+printf("получен сигнал %u от PID %u\n", info.ssi_signo, info.ssi_pid);
+```
+
+Критически важно: перед созданием `signalfd` нужно **заблокировать** соответствующие сигналы через `sigprocmask()`. Иначе они будут доставляться обычным образом (обработчиком) И через fd — дважды.
+
+`signalfd` элегантнее self-pipe trick: не нужен вспомогательный pipe, `siginfo_t` доступна без `SA_SIGINFO`, интегрируется в `epoll` напрямую. Мост в C4.
+
+### 12.5 Маскирование сигналов
+
+```c
+sigset_t set, oldset;
+sigemptyset(&set);
+sigaddset(&set, SIGINT);
+
+/* Заблокировать сигналы */
+sigprocmask(SIG_BLOCK, &set, &oldset);   // &oldset — сохранить старую маску
+/* ... критическая секция ... */
+sigprocmask(SIG_SETMASK, &oldset, NULL); // восстановить
+```
+
+В многопоточном коде вместо `sigprocmask()` использовать `pthread_sigmask()` — идентичный интерфейс, но работает на уровне потока, а не процесса. `sigprocmask()` в потоке имеет implementation-defined поведение на уровне POSIX (на Linux работает как `pthread_sigmask`, но это деталь реализации).
+
+**`sa_mask` в `sigaction`:** при установке через `sigaction` поле `sa_mask` блокирует указанные сигналы **атомарно** на время выполнения обработчика. Это надёжнее, чем `sigprocmask()` внутри обработчика.
+
+### 12.6 Pending signals
+
+```c
+sigset_t pending;
+sigpending(&pending);
+if (sigismember(&pending, SIGTERM)) {
+    printf("SIGTERM ожидает доставки\n");
+}
+```
+
+Стандартные (не-realtime) сигналы **не очерёдуются**: если `SIGINT` уже pending и придёт второй `SIGINT` — он потеряется. Realtime-сигналы (`SIGRTMIN..SIGRTMAX`) очерёдуются через `sigqueue()`.
+
+```c
+/* Отправить realtime-сигнал с данными */
+union sigval sv = { .sival_int = 42 };
+sigqueue(target_pid, SIGRTMIN + 1, sv);
+
+/* Получить в обработчике через SA_SIGINFO */
+void handler(int sig, siginfo_t *info, void *ctx) {
+    printf("данные: %d\n", info->si_value.sival_int);
+}
+```
+
+### 12.7 Отправка сигналов
+
+```c
+kill(pid, SIGTERM);         // конкретному процессу
+kill(0, SIGTERM);           // всей своей группе процессов
+kill(-1, SIGTERM);          // всем процессам (кроме init) — осторожно
+kill(-pgid, SIGTERM);       // всей группе pgid
+
+killpg(pgid, SIGTERM);      // то же, что kill(-pgid, ...) но явнее
+
+raise(SIGTERM);             // самому себе (эквивалент kill(getpid(), ...))
+```
+
+`kill()` требует прав: можно посылать сигналы только процессам с тем же euid, или если у тебя `CAP_KILL`. Исключение: `SIGCONT` можно посылать в своей сессии.
+
+### 12.8 `SIGCHLD` — reap без race condition
+
+Проблема: несколько потомков могут завершиться почти одновременно, а один `SIGCHLD` может представлять несколько завершений.
+
+```c
+void sigchld_handler(int sig) {
+    (void)sig;
+    int status;
+    pid_t pid;
+    /* Цикл с WNOHANG — забираем всех завершившихся */
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        if (WIFEXITED(status))
+            /* потомок завершился нормально */;
+        else if (WIFSIGNALED(status))
+            /* потомок убит сигналом */;
+    }
+    /* Ошибки: ECHILD = нет завершившихся потомков — нормально */
+}
+
+struct sigaction sa = {
+    .sa_handler = sigchld_handler,
+    .sa_flags   = SA_RESTART | SA_NOCLDSTOP,  // не уведомлять о SIGSTOP/SIGCONT
+};
+sigemptyset(&sa.sa_mask);
+sigaction(SIGCHLD, &sa, NULL);
+```
+
+Альтернатива — `SA_NOCLDWAIT`: ядро не создаёт зомби, потомки reap'аются автоматически. Но тогда нельзя получить exit status.
+
+> **Практика 12.A:** реализуй graceful shutdown через SIGTERM. Объяви `volatile sig_atomic_t running = 1;`, обработчик `shutdown_handler` устанавливает `running = 0`. В `main()`: установи обработчик через `sigaction()` с `SA_RESTART`, затем запусти цикл `while (running) { sleep(1); printf("tick\n"); }`. Из другого терминала пошли `SIGTERM` — программа должна завершиться чисто после следующей итерации.
+
+---
+
+## 13. Практика модуля (сводно)
+
+1. **Сырые syscall-обёртки** (`my_read`/`my_write`/`my_open`/`my_close` через `syscall(2)`) + `strace`-сравнение с glibc-версиями. *(§1)*
+2. **`die()`** — единая идиома обработки ошибок через `errno`/`strerror`, используемая во всех следующих практиках. *(§2)*
+3. **`read_full`/`write_full`** с корректной обработкой `EINTR` и partial I/O + тест с сигналами под `strace -f`. *(§3)*
+4. **vDSO-бенчмарк**: `clock_gettime` через glibc vs через прямой `syscall()`, подтверждённый `strace -c`. *(§4)*
+5. **Общий offset через `dup`/`fork`**, демонстрация `O_APPEND` vs без него под конкурентной записью. *(§5)*
+6. **Чтение man-страниц** — таблица для 5 syscalls: успех/ошибка/3 errno/1 деталь из NOTES. *(§7)*
+7. **pipe + fork + exec**: child stdout → parent через pipe, считаем строки. *(§8)*
+8. **mmap round-trip**: отобразить файл, изменить через указатель, msync, проверить. *(§9)*
+9. **PID-файл**: acquire/release single-instance guard с `flock(LOCK_EX|LOCK_NB)`. *(§10)*
+10. **Рекурсивный dir-walker**: `opendir`/`readdir`/`lstat`, считаем файлы и суммарный размер. *(§11)*
+11. **Graceful shutdown**: `volatile sig_atomic_t` + `sigaction()` + SIGTERM из другого терминала. *(§12)*
+
+---
+
+## 14. Самопроверка модуля Ф2
 
 1. На x86-64, какие регистры используются для аргументов syscall, и почему четвёртый аргумент — `r10`, а не `rcx`, как в обычном ABI вызова функций?
 2. Как ядро сообщает об ошибке через `rax`, и что *дополнительно* делает glibc-обёртка, чтобы превратить это в привычные `-1`/`errno`?
@@ -405,7 +1282,7 @@ if (fork() == 0) {
 
 ---
 
-## 10. Банк вопросов
+## 15. Банк вопросов
 
 **БАЗА**
 1. Где живёт `errno` и почему он безопасен между потоками без явной синхронизации?
@@ -438,7 +1315,7 @@ if (fork() == 0) {
 
 ---
 
-## 11. Что дальше
+## 16. Что дальше
 
 Ф2 даёт тебе словарь и рефлексы для всего, что дальше: каждый модуль C1–C6 и K1–K7 опирается на «читаю `man 2`, проверяю `errno`, не забываю про `EINTR`/partial I/O» как на нечто само собой разумеющееся. `read_full`/`write_full` из §3 — заготовка, которую ты будешь использовать в C2 (event loop), C3 (IPC через pipe/UDS) и при тестах драйверов (K1).
 

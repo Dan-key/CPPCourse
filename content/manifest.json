@@ -5,53 +5,345 @@
       "id": "stage1",
       "title": "Этап 1. Фундамент",
       "modules": [
-        { "id": "f1", "title": "Ф1. C для системного кода", "tag": "в основном есть", "file": "modules/01-F1-c-for-system-code.md", "status": "ready" },
-        { "id": "f2", "title": "Ф2. Linux API и системные вызовы", "tag": "частично есть", "file": "modules/02-F2-linux-api-syscalls.md", "status": "ready" },
-        { "id": "f3", "title": "Ф3. Процессы, потоки, память, ELF", "tag": "в основном есть", "file": null, "status": "planned" },
-        { "id": "f4", "title": "Ф4. Инструменты отладки", "tag": "есть", "file": null, "status": "planned" }
+        {
+          "id": "f1",
+          "title": "Ф1. C для системного кода",
+          "tag": "в основном есть",
+          "file": "modules/01-F1-c-for-system-code.md",
+          "quiz": "quizzes/f1.json",
+          "exercises": [
+            {"id": "01-overflow-safe",       "title": "Overflow-safe arithmetic"},
+            {"id": "02-safe-cmp",            "title": "Safe signed/unsigned comparison"},
+            {"id": "03-integer-promotions",  "title": "Integer promotions и UAC"},
+            {"id": "04-type-punning",        "title": "Type punning: union vs memcpy"},
+            {"id": "05-read-whole-file",     "title": "read_whole_file с goto-cleanup"},
+            {"id": "06-struct-layout",       "title": "Struct layout, padding, container_of"},
+            {"id": "07-safe-strings",        "title": "Безопасные строки и strtol"},
+            {"id": "08-function-pointers",   "title": "Указатели на функции и dispatch table"}
+          ],
+          "status": "ready"
+        },
+        {
+          "id": "f2",
+          "title": "Ф2. Linux API и системные вызовы",
+          "tag": "частично есть",
+          "file": "modules/02-F2-linux-api-syscalls.md",
+          "quiz": "quizzes/f2.json",
+          "exercises": [
+            {"id": "01-raw-syscalls",      "title": "Raw syscall через syscall(2)"},
+            {"id": "02-write-all",         "title": "write_all с EINTR-retry"},
+            {"id": "03-read-full",         "title": "read_full и write_full с EINTR"},
+            {"id": "04-pipe-parent-child", "title": "Pipe между родителем и потомком"},
+            {"id": "05-mmap-file",         "title": "mmap: чтение и запись файлов"},
+            {"id": "06-dir-stats",         "title": "Обход директории: stat и readdir"},
+            {"id": "07-signal-handler",    "title": "Обработчики сигналов через sigaction"}
+          ],
+          "status": "ready"
+        },
+        {
+          "id": "f3",
+          "title": "Ф3. Процессы, потоки, память, ELF",
+          "tag": "в основном есть",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "f4",
+          "title": "Ф4. Инструменты отладки",
+          "tag": "есть",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        }
       ]
     },
     {
       "id": "stage2a",
       "title": "Этап 2A. Userspace-ремесло",
       "modules": [
-        { "id": "c1", "title": "C1. Конкурентность и модель памяти", "tag": "закрепить", "file": null, "status": "planned" },
-        { "id": "c2", "title": "C2. epoll и io_uring", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "c3", "title": "C3. IPC и разделяемая память", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "c4", "title": "C4. Сигналы, таймеры, inotify", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "c5", "title": "C5. Демоны и сервисы", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "c6", "title": "C6. Производительность", "tag": "частично есть", "file": null, "status": "planned" }
+        {
+          "id": "c1",
+          "title": "C1. Конкурентность и модель памяти",
+          "tag": "закрепить",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "c2",
+          "title": "C2. epoll и io_uring",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "c3",
+          "title": "C3. IPC и разделяемая память",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "c4",
+          "title": "C4. Сигналы, таймеры, inotify",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "c5",
+          "title": "C5. Демоны и сервисы",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "c6",
+          "title": "C6. Производительность",
+          "tag": "частично есть",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        }
       ]
     },
     {
       "id": "stage2b",
       "title": "Этап 2B. Сторона ядра",
       "modules": [
-        { "id": "k1", "title": "K1. Драйверы символьных устройств", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "k2", "title": "K2. Синхронизация в ядре", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "k3", "title": "K3. Прерывания и отложенная работа", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "k4", "title": "K4. Память ядра", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "k5", "title": "K5. VFS и псевдо-ФС", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "k6", "title": "K6. netfilter и сетевой стек", "tag": "новое", "file": null, "status": "planned" },
-        { "id": "k7", "title": "K7. Трассировка из ядра", "tag": "частично есть", "file": null, "status": "planned" }
+        {
+          "id": "k1",
+          "title": "K1. Драйверы символьных устройств",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [
+            {"id": "01-char-dev", "title": "Char device с read/write/ioctl", "type": "lkm"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "k2",
+          "title": "K2. Синхронизация в ядре",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "k3",
+          "title": "K3. Прерывания и отложенная работа",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [
+            {"id": "01-workqueue", "title": "Обработчик прерывания + workqueue", "type": "lkm"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "k4",
+          "title": "K4. Память ядра",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [
+            {"id": "01-slab-cache", "title": "Slab-кэш + kmemleak", "type": "lkm"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "k5",
+          "title": "K5. VFS и псевдо-ФС",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [
+            {"id": "01-debugfs", "title": "debugfs-интерфейс к драйверу", "type": "lkm"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "k6",
+          "title": "K6. netfilter и сетевой стек",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [
+            {"id": "01-nf-hook", "title": "netfilter-модуль с drop по критерию", "type": "lkm"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "k7",
+          "title": "K7. Трассировка из ядра",
+          "tag": "частично есть",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "stage2c",
+      "title": "Этап 2C. Embedded Linux",
+      "modules": [
+        {
+          "id": "el1",
+          "title": "EL1. Кросс-компиляция и ARM toolchain",
+          "tag": "новое",
+          "file": "modules/el1-cross-compilation.md",
+          "quiz": "quizzes/el1.json",
+          "exercises": [
+            {"id": "01-endian-detect",   "title": "Определение endianness без UB"},
+            {"id": "02-cross-hello",     "title": "Hello ARM: кросс-компиляция и проверка ELF"},
+            {"id": "03-abi-struct",      "title": "ABI: sizeof и layout на host vs ARM"}
+          ],
+          "status": "ready"
+        },
+        {
+          "id": "el2",
+          "title": "EL2. Device Tree",
+          "tag": "новое",
+          "file": "modules/el2-device-tree.md",
+          "quiz": "quizzes/el2.json",
+          "exercises": [
+            {"id": "01-dts-parse",       "title": "Разбор DTS: find_node и чтение свойств"},
+            {"id": "02-platform-driver", "title": "Минимальный platform_driver с of_match"}
+          ],
+          "status": "ready"
+        },
+        {
+          "id": "el3",
+          "title": "EL3. U-Boot: загрузчик",
+          "tag": "новое",
+          "file": "modules/el3-uboot.md",
+          "quiz": "quizzes/el3.json",
+          "exercises": [],
+          "status": "ready"
+        },
+        {
+          "id": "el4",
+          "title": "EL4. Buildroot: корневая ФС",
+          "tag": "новое",
+          "file": "modules/el4-buildroot.md",
+          "quiz": "quizzes/el4.json",
+          "exercises": [],
+          "status": "ready"
+        },
+        {
+          "id": "el5",
+          "title": "EL5. Platform drivers: I2C и SPI",
+          "tag": "новое",
+          "file": "modules/el5-i2c-spi.md",
+          "quiz": "quizzes/el5.json",
+          "exercises": [
+            {"id": "01-i2c-dummy",  "title": "I2C dummy driver: probe/remove/регистрация"},
+            {"id": "02-spi-dummy",  "title": "SPI transfer loop: spi_sync и буферы"}
+          ],
+          "status": "ready"
+        },
+        {
+          "id": "el6",
+          "title": "EL6. USB в ядре Linux",
+          "tag": "новое",
+          "file": "modules/el6-usb.md",
+          "quiz": "quizzes/el6.json",
+          "exercises": [],
+          "status": "ready"
+        },
+        {
+          "id": "el7",
+          "title": "EL7. CAN и последовательные интерфейсы",
+          "tag": "новое",
+          "file": "modules/el7-can-serial.md",
+          "quiz": "quizzes/el7.json",
+          "exercises": [
+            {"id": "01-socketcan",  "title": "SocketCAN: отправка и приём CAN-фреймов"}
+          ],
+          "status": "ready"
+        }
       ]
     },
     {
       "id": "stage3",
       "title": "Этап 3. Специализация",
       "modules": [
-        { "id": "spec-a", "title": "(a) Ядро и драйверы", "tag": "сильный фит", "file": null, "status": "planned" },
-        { "id": "spec-b", "title": "(b) Embedded / device Linux", "tag": "сильный фит", "file": null, "status": "planned" },
-        { "id": "spec-c", "title": "(c) Высокопроизв. сетевые системы", "tag": null, "file": null, "status": "planned" },
-        { "id": "spec-d", "title": "(d) Хранилище и БД", "tag": null, "file": null, "status": "planned" },
-        { "id": "spec-e", "title": "(e) Инженерия дистрибутива", "tag": null, "file": null, "status": "planned" }
+        {
+          "id": "spec-a",
+          "title": "(a) Ядро и драйверы",
+          "tag": "сильный фит",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "spec-b",
+          "title": "(b) Embedded / device Linux",
+          "tag": "сильный фит",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "spec-c",
+          "title": "(c) Высокопроизв. сетевые системы",
+          "tag": null,
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "spec-d",
+          "title": "(d) Хранилище и БД",
+          "tag": null,
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "spec-e",
+          "title": "(e) Инженерия дистрибутива",
+          "tag": null,
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        }
       ]
     },
     {
       "id": "capstone",
       "title": "Капстоун",
       "modules": [
-        { "id": "capstone", "title": "Сквозной капстоун хребта", "tag": null, "file": null, "status": "planned" }
+        {
+          "id": "capstone",
+          "title": "Сквозной капстоун хребта",
+          "tag": null,
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        }
       ]
     }
   ]
