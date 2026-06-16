@@ -1,0 +1,210 @@
+{
+  "module": "f3",
+  "title": "Ф3 — Процессы, потоки, память, ELF",
+  "levels": {
+    "БАЗА": {
+      "desc": "Термины — отвечать мгновенно",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что вернёт `fork()` **дочернему** процессу при успешном создании?",
+          "options": [
+            "PID родительского процесса",
+            "PID дочернего процесса",
+            "0",
+            "-1"
+          ],
+          "answer": 2,
+          "explanation": "fork() возвращает 0 дочернему процессу. Родитель получает PID потомка. -1 возвращается только при ошибке и только в родительском процессе — в дочернем fork() не может «вернуть ошибку», потому что дочерний ещё не существует до успешного fork()."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое zombie-процесс?",
+          "options": [
+            "Процесс, потребляющий 100% CPU без видимой причины",
+            "Процесс, чей родитель завершился раньше него (усыновлён init)",
+            "Завершившийся процесс, чья запись в таблице процессов ещё не считана родителем через wait()",
+            "Процесс, заблокированный в системном вызове в состоянии D (uninterruptible sleep)"
+          ],
+          "answer": 2,
+          "explanation": "Zombie (defunct): процесс завершился (_exit/exit), ресурсы освобождены, но запись в таблице процессов (PID + статус завершения) сохраняется до вызова wait()/waitpid() родителем. Виден как '<defunct>' в ps. Ресурсов не потребляет, но занимает PID. Если родитель завершился раньше — потомка усыновляет init, который регулярно вызывает wait() и пожинает зомби."
+        },
+        {
+          "type": "mcq",
+          "text": "Какой Linux системный вызов лежит в основе и `fork()`, и `pthread_create()`?",
+          "options": [
+            "fork()",
+            "vfork()",
+            "clone()",
+            "spawn()"
+          ],
+          "answer": 2,
+          "explanation": "clone() — Linux-специфичный системный вызов, создающий новый task_struct. fork() = clone(SIGCHLD) без CLONE_VM/CLONE_THREAD. pthread_create() ≈ clone(CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|...). Планировщик Linux не различает «потоки» и «процессы» — обоих называет task."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое ASLR (Address Space Layout Randomization)?",
+          "options": [
+            "Механизм lazy binding для shared libraries через PLT/GOT",
+            "Рандомизация базовых адресов stack, mmap-региона и (при PIE) исполняемого файла при каждом запуске",
+            "Аппаратный механизм защиты страниц от исполнения (NX/XD bit)",
+            "Алгоритм балансировки нагрузки планировщика Linux (CFS)"
+          ],
+          "answer": 1,
+          "explanation": "ASLR рандомизирует адреса загрузки: stack (~11 бит на x86-64), mmap-регион (heap, библиотеки), и для PIE-бинарников — сам .text исполняемого файла. Цель: сделать невозможным hardcoded адреса в exploit-коде. Управление: /proc/sys/kernel/randomize_va_space (0=off, 1=stack+mmap, 2=+heap+PIE)."
+        },
+        {
+          "type": "mcq",
+          "text": "Для чего нужен флаг `FD_CLOEXEC` (или `O_CLOEXEC`)?",
+          "options": [
+            "Закрыть файловый дескриптор при вызове close()",
+            "Автоматически закрыть fd при execve(), предотвращая наследование новой программой",
+            "Запретить dup() этого fd другими потоками процесса",
+            "Запретить fork() пока данный fd остаётся открытым"
+          ],
+          "answer": 1,
+          "explanation": "FD_CLOEXEC (close-on-exec): fd автоматически закрывается при успешном execve(). Без него fd наследуется любой программой, запущенной через exec — утечка дескрипторов, удержание файловых блокировок, мешает EOF в pipe. O_CLOEXEC при open() устанавливает флаг атомарно — важно в многопоточном коде (избегает race между open() и fork()+exec() другого потока)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое секция `.bss` в ELF-файле?",
+          "options": [
+            "Startup-код, передающий управление main() (CRT — C Runtime)",
+            "Инициализированные глобальные и статические переменные",
+            "Неинициализированные глобальные и статические переменные — в файле нулевого размера, нули предоставляет загрузчик",
+            "Таблица символов для отладчика (только в debug-сборках)"
+          ],
+          "answer": 2,
+          "explanation": ".bss (Block Started by Symbol): неинициализированные/нулевые глобальные и статические переменные. В ELF-файле эта секция занимает 0 байт (не хранит нули явно) — только размер. При загрузке ядро создаёт анонимный mapping (mmap MAP_ANONYMOUS) нужного размера, заполненный нулями. Экономит размер исполняемого файла."
+        },
+        {
+          "type": "mcq",
+          "text": "Зачем нужны `__thread` и `_Thread_local` (Thread-Local Storage)?",
+          "options": [
+            "Ограничить видимость переменной текущей единицей трансляции (как static)",
+            "Дать каждому потоку свою независимую копию переменной",
+            "Защитить переменную от одновременного доступа нескольких потоков (как mutex)",
+            "Разместить переменную в read-only секции .rodata"
+          ],
+          "answer": 1,
+          "explanation": "TLS (Thread-Local Storage): каждый поток имеет свою копию переменной. Классический пример — errno в glibc: это __thread int errno, поэтому ошибки одного потока не влияют на errno другого. __thread (GNU extension) компилируется в TLS segment ELF и работает быстро (доступ через fs: или gs: сегментный регистр). _Thread_local — стандарт C11."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает `pthread_cond_broadcast()` в отличие от `pthread_cond_signal()`?",
+          "options": [
+            "Гарантирует пробуждение конкретного потока, указанного по TID",
+            "Пробуждает только один поток с наивысшим приоритетом среди ожидающих",
+            "Пробуждает ВСЕ потоки, ожидающие на данной condition variable",
+            "Отменяет ожидание без пробуждения и возвращает ECANCELED ожидающим"
+          ],
+          "answer": 2,
+          "explanation": "pthread_cond_signal() пробуждает один произвольный ждущий поток. pthread_cond_broadcast() пробуждает все ждущие потоки. Когда использовать broadcast: если разные потоки ждут разных условий на одном condvar; если одно событие «разрешает» всем продолжить (например, shutdown). Все пробуждённые потоки будут бороться за mutex — побеждает один, остальные снова ждут (именно поэтому while, а не if)."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Как и почему работает",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Объясни полный жизненный цикл дочернего процесса от `fork()` до `waitpid()`. Что происходит с ресурсами на каждом этапе? Когда именно освобождается PID? Почему нужен `_exit()` в потомке, а не `exit()`?",
+          "hint": "fork → COW → выполнение → exit/_exit → zombie → waitpid → освобождение PID. exit() флашит stdio-буферы родителя.",
+          "reference": "fork(): COW-копия адресного пространства (страницы shared RO), копия таблицы fd (ссылки на те же OFD → общие смещения!), копия signal dispositions. Потомок выполняется независимо. exit()/_exit(): для потомка нужен _exit() — exit() вызывает atexit()-обработчики и fflush() всех stdio-буферов. После fork() потомок унаследовал буферы родителя с незаписанными данными → exit() выведет их дважды (потомок + родитель). _exit() напрямую вызывает exit_group syscall. При _exit(): освобождается адресное пространство (munmap VMA), закрываются fd (dec ref count OFD), ядро отправляет SIGCHLD родителю, task_struct переходит в Z-состояние (zombie). PID и статус сохраняются. waitpid(): родитель читает статус из zombie task_struct, после чего ядро окончательно освобождает task_struct и PID возвращается в пул."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как реализовать пул потоков с очередью задач, используя mutex + condvar? Опиши структуры данных и логику worker-потока и функции submit(). Как корректно завершить пул?",
+          "hint": "Кольцевой буфер задач + mutex + condvar 'есть задача' + condvar 'есть место' + флаг shutdown. Worker: while, wait, взять, signal, unlock, выполнить. Завершение: broadcast после установки shutdown.",
+          "reference": "Структура: task_queue (массив func+arg, head/tail/count/capacity), pthread_mutex_t mu, pthread_cond_t not_empty (для воркеров), pthread_cond_t not_full (для submit), int shutdown. Worker(): lock(mu); while(!shutdown && count==0) wait(not_empty, mu); if(shutdown && count==0) { unlock; return; } взять задачу (head++), count--, signal(not_full); unlock(); выполнить задачу. submit(task): lock; while(count==capacity && !shutdown) wait(not_full, mu); if(!shutdown) { добавить tail++, count++, signal(not_empty); } unlock. Завершение: lock; shutdown=1; broadcast(not_empty); unlock; for each worker: pthread_join(). Почему broadcast а не signal: нужно разбудить ВСЕ воркеры чтобы они увидели shutdown."
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни PLT/GOT механизм lazy binding шаг за шагом. Что происходит при первом и втором вызове `printf()`? Как `FULL RELRO` защищает от атак типа GOT overwrite?",
+          "hint": "GOT изначально → PLT+6 → resolver патчит GOT реальным адресом. FULL RELRO: LD_BIND_NOW + GOT read-only.",
+          "reference": "Компоновщик создаёт .plt (заглушки) и .got.plt (слоты). Изначально GOT[printf] = адрес PLT+6 (stub внутри .plt). Первый вызов: call printf@plt → jmp *GOT[printf] → PLT+6 → push index → jmp PLT[0] → _dl_runtime_resolve(link_map, index) → ищет printf в libc → записывает реальный адрес в GOT[printf] → прыгает на printf. Второй вызов: call printf@plt → jmp *GOT[printf] → сразу printf в libc. PARTIAL RELRO: .got (не .got.plt) делается RO после загрузки. FULL RELRO: форсирует LD_BIND_NOW (все символы резолвятся при загрузке, не лениво), затем всё GOT включая .got.plt делается RO. Атака GOT overwrite: перезаписать GOT[free] адресом system() → free(\"/bin/sh\") → shell. С FULL RELRO: GOT read-only → попытка записи → SIGSEGV."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как прочитать карту памяти процесса через `/proc`? Что означает каждое поле строки в `/proc/self/maps`? Чем отличается RSS от PSS в `/proc/self/smaps`?",
+          "hint": "maps: address perms offset dev ino name. smaps: Rss/Pss/Shared/Private. PSS = RSS / число процессов разделяющих страницу.",
+          "reference": "Формат /proc/self/maps: start-end perms offset dev inode pathname. perms: r=read, w=write, x=execute, p=private(COW), s=shared. offset: смещение в файле для file-backed mappings (0 для anonymous). dev: major:minor устройства. inode: inode файла (0 для anonymous). pathname: /path/to/file, [heap], [stack], [vdso], [vvar], или пусто для anonymous. RSS (Resident Set Size): физических страниц этой VMA в RAM — считает разделяемые страницы за каждым процессом полностью (двойной счёт). PSS (Proportional Set Size): RSS делённый пропорционально числу процессов разделяющих страницы. Если libc (2МиB RSS) разделяется между 100 процессами, PSS = 2МиB/100 = 20КиB. PSS — честная оценка реального давления процесса на RAM. VmRSS в /proc/self/status = сумма RSS всех VMA."
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему data race — это UB в C11? Что конкретно может сделать компилятор с кодом, содержащим гонку данных? Покажи пример оптимизации, ломающей racy код.",
+          "hint": "Компилятор предполагает single-thread семантику; кэширует в регистре; переупорядочивает. volatile не помогает для MT — нужны atomics.",
+          "reference": "C11 §5.1.2.4: два потока одновременно обращаются к одному объекту без синхронизации, хотя бы одно — запись → data race → undefined behavior. Компилятор предполагает: в отсутствие synchronization operations к non-atomic объекту обращается только текущий поток. Примеры оптимизации: (1) Spin-loop: while(!stop){work();} — компилятор читает stop один раз в регистр (нет наблюдателей в этом потоке), генерирует бесконечный loop. stop=1 из другого потока не имеет эффекта. Решение: atomic_load(&stop). (2) Переупорядочивание: x=1; flag=1 может стать flag=1; x=1 (нет зависимости). Другой поток видит flag==1 но x==0. Решение: release store для flag. (3) Мёртвый код: компилятор может удалить 'мёртвые' записи, которые он считает невидимыми — но другой поток их читает."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как безопасно разделить данные между родителем и потомком через `fork()`? Какие ловушки при использовании mutex в данных, доступных обеим сторонам? Как передать данные от потомка к родителю?",
+          "hint": "COW: данные доступны сразу после fork, пока нет записи. Mutex в данных: если залочен в момент fork — в потомке deadlock. Обратно: pipe, wait+WEXITSTATUS, mmap(MAP_SHARED|MAP_ANONYMOUS).",
+          "reference": "Сразу после fork(): потомок видит COW-копию всего адресного пространства. Указатели на heap валидны. Ловушки: (1) Если родитель модифицирует данные после fork — COW создаёт приватную копию, потомок не видит изменений (и наоборот). (2) Открытые fd: оба процесса имеют копии одних OFD → общие смещения → записи перемешиваются. (3) Mutex: если другой поток удерживал mutex в момент fork() → в потомке только один поток (звавший fork), mutex навсегда locked → deadlock при попытке lock. pthread_atfork() для обхода. Потомок → родитель: (1) Pipe: pipe() до fork(); потомок пишет, родитель читает после waitpid. (2) Exit code: wait()+WEXITSTATUS — только 8 бит (0-255). (3) mmap(MAP_SHARED|MAP_ANONYMOUS, fd=-1) до fork — обе стороны читают/пишут одни физические страницы. (4) POSIX shm_open + mmap. (5) SysV shmget."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое `memory_order_acquire` и `memory_order_release` в C11 atomics? Как они обеспечивают happens-before? Чем отличается поведение на x86-64 от ARM?",
+          "hint": "release при store: все предыдущие операции видны до этого store. acquire при load: все последующие операции выполняются после этого load. x86 TSO = strong; ARM = weak, нужны ldar/stlr.",
+          "reference": "memory_order_release при store(x, val, release): ни одна из предшествующих в программном порядке операций чтения/записи не может быть переставлена после этого store (compiler + hardware barrier). memory_order_acquire при load(x, acquire): ни одна из последующих в программном порядке операций не может быть переставлена до этого load. Happens-before: если поток A сделал release store в x, а поток B увидел это значение через acquire load → все операции A до release видны B после acquire. Паттерн публикации: A пишет data, затем release store flag=1; B делает acquire load flag → видит 1 → гарантированно видит data. x86-64 TSO (Total Store Order): все loads имеют acquire семантику, все stores имеют release семантику по умолчанию (архитектурная гарантия). release/acquire = обычные MOV инструкции без дополнительных барьеров. ARM weak ordering: release store = STLR инструкция; acquire load = LDAR. Без них переупорядочивание произвольное. seq_cst: добавляет full barrier; на x86 — MFENCE или XCHG для stores."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как `clone()` используется для создания Linux-контейнеров? Какой минимальный набор namespace-флагов нужен для настоящей изоляции? Что такое `pivot_root()` и зачем он нужен?",
+          "hint": "CLONE_NEWPID + CLONE_NEWNET + CLONE_NEWNS (mount) + CLONE_NEWUTS. pivot_root: меняет корень ФС для всего mount namespace (vs chroot: только для процесса).",
+          "reference": "Минимальный набор для контейнера: CLONE_NEWPID (свои PID; init=PID1 внутри), CLONE_NEWNET (свои интерфейсы, нет доступа к хостовым; нужно создать veth-пары для связи с хостом), CLONE_NEWNS (mount namespace: свои точки монтирования), CLONE_NEWUTS (свой hostname), CLONE_NEWIPC (изолированные SysV/POSIX очереди). Для rootless: CLONE_NEWUSER (маппинг uid/gid через /proc/PID/uid_map). Порядок создания контейнера: clone(CLONE_NEWPID|CLONE_NEWNET|CLONE_NEWNS|...) → monting overlayfs на образ → pivot_root(new_root, put_old) → umount put_old → exec /sbin/init. pivot_root vs chroot: pivot_root() меняет корень для всего mount namespace (безопаснее); chroot() — только для текущего процесса и потомков, не меняет mount namespace. Злоумышленник может выйти из chroot если он root; pivot_root + umount old_root — надёжнее. cgroups (отдельно от namespaces): ограничивают CPU/RAM/IO ресурсы."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Архитектура и edge-cases",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как реализовать lock-free стек на CAS-атомиках? Покажи реализацию `push()` и `pop()`. Что такое ABA-проблема и как tagged pointer решает её?",
+          "hint": "CAS на head: compare old_head → set new_node. ABA: указатель вернулся к тому же значению но данные изменились. Tagged pointer: упаковать версионный счётчик в старшие биты.",
+          "reference": "Lock-free стек: struct Node { int val; Node *next; }; atomic_uintptr_t head=0. push(val): Node *n=malloc(); n->val=val; do { n->next=load(&head,relaxed); } while(!CAS_weak(&head, &(uintptr_t)n->next, (uintptr_t)n, release, relaxed)). pop(): do { old=load(&head,acquire); if(!old)return EMPTY; Node*n=(Node*)old; next=(uintptr_t)n->next; } while(!CAS_weak(&head, &old, next, release, relaxed)); val=((Node*)old)->val; free((Node*)old); return val. ABA проблема: поток A читает head=X, вытесняется. B: pop X, push Y, push X (тот же адрес). A: CAS(head==X→next_of_A) успевает, но next_of_A уже не то что было → стек испорчен. Tagged pointer решение: упаковать 16-bit счётчик в старшие биты указателя (Linux: адреса 48-bit). struct TaggedPtr { uintptr_t ptr:48; uint16_t tag:16; }; CAS атомарно сравнивает и ptr и tag. При каждом pop: increment tag. ABA невозможна: даже если ptr тот же, tag не совпадёт. На x86: CMPXCHG16B (128-bit CAS) для пары {ptr, count}. Hazard pointers — альтернатива без ABA, с safe memory reclamation."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как работает DWARF отладочная информация? Как `gdb` строит backtrace без frame pointer? Что такое CFA (Canonical Frame Address) и CFI (Call Frame Information)?",
+          "hint": ".eh_frame / .debug_frame содержат CFI: для каждого PC — как вычислить CFA и восстановить регистры. gdb: итерирует frame по frame через CFI.",
+          "reference": "DWARF CFI (Call Frame Information) в .eh_frame: описывает для каждого диапазона PC как вычислить CFA (Canonical Frame Address — логическая вершина frame, обычно rsp+N или rbp+16) и как восстановить значения callee-saved регистров (где они сохранены относительно CFA). Формат: FDE (Frame Description Entry) с range + DWARF bytecode (DW_CFA_* инструкции). gdb backtrace: (1) текущий PC → найти FDE покрывающий этот PC; (2) вычислить CFA по правилу FDE; (3) return address = *(CFA-8) на x86-64; (4) восстановить сохранённые регистры; (5) повторить для следующего frame. Без .eh_frame: gdb использует frame pointer (rbp) — работает только с -fno-omit-frame-pointer. .debug_info (DWARF types): DW_TAG_subprogram, DW_TAG_variable с DW_AT_type (тип) и DW_AT_location (DWARF expression: DW_OP_fbreg -8 = 8 байт ниже frame base). Location может быть DW_OP_reg (в регистре) — меняется по ходу функции через live ranges. .debug_line: маппинг PC → {file, line, column}. Build-id в .note.gnu.build-id: SHA1/MD5 хэш бинарника — debuginfod использует его для загрузки отладочной информации."
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни Priority Inversion и Priority Inheritance Mutex. Какой реальный инцидент демонстрирует проблему? Как Linux реализует PI-mutex через futex?",
+          "hint": "Mars Pathfinder 1997. H ждёт mutex у L; M вытесняет L; H ждёт M. PI: временно поднять приоритет L до H. FUTEX_LOCK_PI.",
+          "reference": "Priority Inversion: поток H (высокий приоритет) блокируется на mutex, который держит L (низкий). Поток M (средний) не связан с mutex, но вытесняет L (M > L по приоритету). L не получает CPU → не освобождает mutex → H ждёт de facto M. Реальный случай: Mars Pathfinder (1997) — VxWorks RTOS, информационная шина (высокий приоритет) ждала ASI task (низкий), вытесняемого метеорологическим task (средний) → watchdog timer срабатывал → системный сброс. Исправлено патчем прямо на Марсе через telecommand. Priority Inheritance (PI): когда H блокируется на mutex у L, ядро поднимает приоритет L до max(приоритет всех ждущих) пока L держит mutex. После unlock — приоритет L возвращается. Linux: FUTEX_LOCK_PI / FUTEX_UNLOCK_PI syscalls. pthreads: pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT). Ядро отслеживает цепочку наследования (PI chain) — если L ждёт другой mutex у LL → LL тоже получает поднятый приоритет (transitive inheritance). Priority Ceiling: альтернатива — mutex имеет статически заданный potential_ceiling_priority; любой захвативший получает этот приоритет немедленно. Проще, но менее гибко."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как реализовать свой аллокатор памяти поверх `mmap()`? Опиши стратегию bump allocator и free-list allocator. Какие инварианты выравнивания нужно соблюдать?",
+          "hint": "Bump: base+offset, только alloc. Free-list: header перед блоком с размером, freelist. Alignment: alignof(max_align_t)=16 на x86-64.",
+          "reference": "Bump allocator: p=mmap(NULL, POOL_SIZE, PROT_RW, MAP_ANON|MAP_PRIVATE, -1, 0); char *cur=p; void *alloc(size): size=ALIGN_UP(size, 16); if(cur+size>p+POOL_SIZE)return NULL; void*r=cur; cur+=size; return r; — нет free() (arena). Free-list allocator: перед каждым блоком header struct { size_t size; struct Header *next; uint32_t magic; }; free(ptr): header_of(ptr)=(Header*)((char*)ptr-sizeof(Header)); добавить в sorted freelist; coalesce с соседями если смежные. alloc(size): пройти freelist first-fit; если нашли и хватает → выделить (возможно split); иначе mmap новый chunk. Выравнивание: стандарт C требует void* alloc(size) выровненный как max_align_t (на x86-64 = 16 байт). ALIGN_UP(size, align) = (size + align-1) & ~(align-1). sizeof(Header) должен быть кратен max_align_t → ptr после header уже выровнен. Guard pages: mprotect(PROT_NONE) страницы вокруг пула → SIGSEGV при overrun → диагностика. jemalloc: size-class segregated freelist + per-thread tcache; TLSF: O(1) через двойной bitmap."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое memory-mapped files и почему они быстрее `read()`/`write()` для случайного доступа к большим файлам? В каких случаях `read()`/`write()` лучше? Какие ловушки у `mmap()`?",
+          "hint": "mmap: нет copy kernel→user, страницы file-backed прямо в page cache. read(): лишнее копирование. mmap лучше: случайный доступ, большие файлы. read() лучше: sequential I/O, pipe/socket. Ловушки: MAP_FAILED≠NULL, SIGBUS при truncate, offset выравнивание.",
+          "reference": "read(fd, buf, n): ядро копирует из page cache в userspace буфер → два экземпляра данных в памяти (page cache + buf). mmap(fd): виртуальные страницы процесса маппятся напрямую на page cache pages. Нет копирования. Page fault при первом доступе → ядро загружает страницу в cache → mapping указывает туда. mmap быстрее при: (1) случайном доступе — нет overhead lseek+read; (2) большие файлы с повторным доступом — ОС управляет eviction из cache; (3) файл нужен как byte array. read() быстрее/предпочтительнее при: (1) последовательном чтении — readahead эффективен, меньше TLB pressure (mmap = много записей TLB); (2) малые файлы < 4KiB — overhead mmap/munmap не оправдан; (3) pipe, socket, stdin — mmap неприменим; (4) streaming обработка. Ловушки mmap: (1) MAP_FAILED = (void*)-1, не NULL — if(p==MAP_FAILED); (2) SIGBUS при ftruncate(fd, 0) под живым mapping — страницы исчезли; (3) offset должен быть кратен PAGE_SIZE (4096); (4) 32-bit: нельзя замапить файл > 2-4 ГиБ (нет VA); (5) MAP_SHARED + msync() для гарантии записи на диск; (6) mlock() для RT если страницы не должны выгружаться."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Сделать руками — автопроверка в редакторе",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-fork-wait",
+          "title": "fork/exec/wait: создание потомков и сбор статусов"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-thread-counter",
+          "title": "Потокобезопасный счётчик на mutex"
+        }
+      ]
+    }
+  }
+}

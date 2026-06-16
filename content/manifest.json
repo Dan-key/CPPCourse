@@ -44,19 +44,24 @@
           "id": "f3",
           "title": "Ф3. Процессы, потоки, память, ELF",
           "tag": "в основном есть",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/03-F3-processes-threads-memory-elf.md",
+          "quiz": "quizzes/f3.json",
+          "exercises": [
+            {"id": "01-fork-wait",      "title": "fork/exec/wait: создание потомков и сбор статусов"},
+            {"id": "02-thread-counter", "title": "Потокобезопасный счётчик на mutex"},
+            {"id": "03-condvar-queue",  "title": "Bounded producer-consumer очередь на condvar"},
+            {"id": "04-elf-parser",     "title": "Парсинг ELF64 заголовка"}
+          ],
+          "status": "ready"
         },
         {
           "id": "f4",
           "title": "Ф4. Инструменты отладки",
           "tag": "есть",
-          "file": null,
-          "quiz": null,
+          "file": "modules/04-F4-debugging-tools.md",
+          "quiz": "quizzes/f4.json",
           "exercises": [],
-          "status": "planned"
+          "status": "ready"
         }
       ]
     },

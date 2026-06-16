@@ -1,0 +1,199 @@
+{
+  "module": "f4",
+  "title": "Ф4 — Инструменты отладки",
+  "levels": {
+    "БАЗА": {
+      "desc": "Термины — отвечать мгновенно",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Какой флаг `gcc` добавляет отладочную информацию в формате DWARF?",
+          "options": [
+            "-d",
+            "-g",
+            "-debug",
+            "-dwarf"
+          ],
+          "answer": 1,
+          "explanation": "-g добавляет DWARF отладочную информацию (имена переменных, строки файла, типы). -g3 дополнительно включает информацию о макросах. Без -g GDB показывает только адреса и дизассемблированный код."
+        },
+        {
+          "type": "mcq",
+          "text": "Какие классы ошибок обнаруживает AddressSanitizer (`-fsanitize=address`)?",
+          "options": [
+            "Только утечки памяти (memory leaks)",
+            "Только переполнения буферов на heap",
+            "heap/stack overflow, use-after-free, double free, use-after-return, memory leaks",
+            "Только data races между потоками"
+          ],
+          "answer": 2,
+          "explanation": "ASan — широкий инструмент для ошибок памяти: heap-buffer-overflow, stack-buffer-overflow, use-after-free, use-after-return, use-after-scope, double-free, memory leaks (через встроенный LSan). Data races — это TSan, а не ASan."
+        },
+        {
+          "type": "mcq",
+          "text": "Что показывает `strace ./prog`?",
+          "options": [
+            "Вызовы функций стандартной библиотеки (malloc, printf и т.д.)",
+            "Системные вызовы программы с аргументами и возвращаемыми значениями",
+            "Инструкции CPU на каждом шаге выполнения",
+            "Обращения к памяти с адресами"
+          ],
+          "answer": 1,
+          "explanation": "strace перехватывает системные вызовы через ptrace(PTRACE_SYSCALL) и отображает каждый вызов: имя, аргументы, возвращаемое значение. Вызовы библиотечных функций (до syscall уровня) показывает ltrace."
+        },
+        {
+          "type": "mcq",
+          "text": "Как вывести стек вызовов (backtrace) в GDB?",
+          "options": [
+            "stack",
+            "call-stack",
+            "backtrace или bt",
+            "frames"
+          ],
+          "answer": 2,
+          "explanation": "backtrace (или сокращение bt) выводит стек вызовов текущего потока. bt full добавляет локальные переменные каждого фрейма. thread apply all bt выводит стеки всех потоков."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое core dump?",
+          "options": [
+            "Дамп содержимого CPU кэша в момент нагрузки",
+            "Снимок состояния процесса (регистры, стек, память) в момент аварийного завершения",
+            "Лог всех системных вызовов до момента краша",
+            "Бинарная копия исполняемого файла"
+          ],
+          "answer": 1,
+          "explanation": "Core dump создаётся ядром при аварийном завершении (SIGSEGV, SIGABRT и др.). Содержит: регистры CPU, стек, все сегменты памяти с флагом PT_LOAD. Позволяет post-mortem анализ через gdb ./prog core без повторного воспроизведения краша. По умолчанию отключён (ulimit -c 0)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что показывает `perf stat ./prog`?",
+          "options": [
+            "Записывает профиль для последующего анализа через perf report",
+            "Статистику аппаратных счётчиков производительности (cycles, instructions, cache-misses, branch-misses) за время выполнения программы",
+            "Строит flame graph в реальном времени",
+            "Трассирует системные вызовы аналогично strace"
+          ],
+          "answer": 1,
+          "explanation": "perf stat использует PMU (Performance Monitoring Unit) процессора для точного подсчёта событий: cycles, instructions (→ IPC), cache-misses, branch-misses. Один запуск — итоговая статистика. Для sampling-профиля используется perf record."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему Valgrind Memcheck работает значительно медленнее ASan?",
+          "options": [
+            "Valgrind выполняет проверки в режиме ядра, что медленнее userspace",
+            "Valgrind инструментирует бинарный код через JIT без перекомпиляции; ASan — лёгкий runtime, вставленный компилятором с минимальными вставками",
+            "Valgrind проверяет принципиально больший класс ошибок",
+            "Valgrind всегда использует 100% одного ядра вне зависимости от нагрузки"
+          ],
+          "answer": 1,
+          "explanation": "Valgrind работает как JIT-компилятор: транслирует каждую инструкцию бинарника в инструментированный код на лету. Это даёт 10-50× overhead, но не требует перекомпиляции — работает с любым бинарником. ASan вставляет проверки компилятором, overhead ~2×. Зато Valgrind находит uninit-memory без перекомпиляции."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое watchpoint в GDB?",
+          "options": [
+            "Breakpoint привязанный к вызову конкретной функции",
+            "Точка наблюдения, останавливающая программу при изменении (или чтении) данных по адресу или переменной",
+            "Таймер, срабатывающий через заданное количество миллисекунд",
+            "Механизм мониторинга системных вызовов внутри GDB"
+          ],
+          "answer": 1,
+          "explanation": "watch x остановит программу при изменении переменной x. rwatch x — при чтении. awatch x — при любом обращении. Аппаратные watchpoints (через CPU debug registers DR0-DR3) работают с нулевым overhead. Решают задачу 'кто изменил эту переменную?' без чтения всего кода."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Как и почему работает",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как найти use-after-free баг с помощью ASan? Опиши что именно ASan выведет и как по этому выводу восстановить историю проблемного блока памяти.",
+          "hint": "ASan даёт три стека: место ошибки, место free(), место malloc(). По ним восстанавливается полная история блока.",
+          "reference": "Скомпилировать с -fsanitize=address -g -O1, запустить. При use-after-free ASan выводит: (1) тип ошибки и адрес: 'heap-use-after-free on address 0x...'; (2) стек вызовов места ошибки (READ/WRITE at); (3) описание блока: '40-byte region [0x...,0x...) freed'; (4) стек вызовов места free(); (5) стек вызовов места malloc(). По этим трём стекам: кто создал (malloc stack), кто освободил (free stack), кто использует после (error stack). ASAN_OPTIONS=halt_on_error=0 найдёт несколько ошибок за один запуск. ASAN_OPTIONS=detect_leaks=1 включит дополнительно LSan."
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни как `strace` используется для диагностики ошибки \"Permission denied\" при открытии файла. Что именно видно в выводе и как это помогает быстрее обычного printf-дебаггинга?",
+          "hint": "strace -e trace=file покажет точный путь и точную ошибку (ENOENT vs EACCES) без изменения кода.",
+          "reference": "strace -e trace=file ./prog 2>&1 | grep -E 'open|ENOENT|EACCES|EPERM' — показывает каждый openat() с точным путём и ошибкой. Пример: openat(AT_FDCWD, \"/etc/myapp/config.conf\", O_RDONLY) = -1 EACCES (Permission denied). Что даёт: (а) точный путь — программа ищет не там где думали, hardcoded путь или неверная конфигурация; (б) EACCES (нет прав) vs ENOENT (нет файла) vs EPERM (запрещено политикой) — разные причины; (в) флаги открытия — возможно O_RDWR когда файл read-only. strace -yy покажет paths для уже открытых fd."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить GDB для анализа многопоточного deadlock? Опиши последовательность команд и как по выводу определить граф ожидания.",
+          "hint": "Ctrl+C в GDB, thread apply all bt, найти потоки в futex()/pthread_mutex_lock, построить граф: кто кого ждёт.",
+          "reference": "Запустить gdb ./prog, run. После зависания: Ctrl+C — прервать. Команды: (1) thread apply all bt — вывести backtrace всех потоков; (2) найти потоки с futex() или pthread_mutex_lock() в стеке — это ожидающие потоки; (3) thread N + info locals — посмотреть какой мьютекс ждёт поток N; (4) set scheduler-locking on — заморозить остальные при переключении; (5) построить граф ожидания: Thread 1 ждёт M1, Thread 2 ждёт M2, Thread 1 держит M2, Thread 2 держит M1 → цикл = deadlock. Профилактика: valgrind --tool=helgrind обнаруживает lock ordering violations превентивно."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как `perf record`/`perf report` помогает найти горячий код? Опиши интерпретацию TUI и как найти конкретную строку исходника.",
+          "hint": "perf record -F 99 -g, perf report TUI: Enter разворачивает call graph, 'a' аннотирует исходный код процентами.",
+          "reference": "perf record -F 99 -g ./prog — sampling 99 раз/сек с записью call graph. perf report — TUI: функции отсортированы по % CPU. Enter на функции разворачивает call graph (кто вызывает, кого вызывает, с долями). 'a' — аннотировать: показывает исходный код (или assembler) с % времени на каждой строке. Строки с наибольшим % — точки для оптимизации. Для читаемого вывода нужны символы (-g при компиляции). perf report --stdio для скриптов/CI. Flame graph — альтернативная визуализация того же профиля: ширина = % CPU."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как читать вывод Valgrind Memcheck для утечки памяти? Что означают категории 'definitely lost', 'indirectly lost', 'still reachable'? Когда 'still reachable' — проблема?",
+          "hint": "definitely lost — нет указателей. still reachable — указатель есть, free() не вызван. Проблема если daemon накапливает или тесты шарят состояние.",
+          "reference": "Запуск: valgrind --leak-check=full --show-leak-kinds=all ./prog. Категории: (1) definitely lost: нет ни одного указателя на блок — настоящая утечка, всегда исправлять; (2) indirectly lost: блок недостижим через другой lost блок (потеряна структура, содержащая указатели); (3) possibly lost: указатель на середину блока (нестандартный аллокатор); (4) still reachable: указатель есть, но free() не вызван до завершения. still reachable — не всегда ошибка: глобальные singleton, stdio буферы glibc. Проблема: если daemon работает долго и 'still reachable' растёт; если тесты запускаются в одном процессе и утечки одного теста влияют на другой."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как использовать `addr2line` для расшифровки адреса из crash-лога? Что делать если программа скомпилирована как PIE и ASLR включён?",
+          "hint": "addr2line -e ./prog -f -i ADDR. Для PIE: base из /proc/PID/maps, вычесть из crash addr, передать offset в addr2line.",
+          "reference": "addr2line -e ./prog -f -i 0xADDRESS. Флаги: -f показывает имя функции, -i разворачивает инлайн-функции. Для PIE с ASLR: (1) Из /proc/$PID/maps при жизни процесса или из core dump: base = 0x555555554000; (2) crash_offset = crash_addr - base; (3) addr2line -e ./prog -f -i crash_offset. Для shared library: аналогично — адрес относительно базы SO из maps. Если выводит '?:?' — нет debug info (нужен -g). Несколько адресов за раз: addr2line -e ./prog 0x1234 0x5678 0x9abc."
+        },
+        {
+          "type": "self_grade",
+          "text": "Какая практическая разница между `-O0` и `-Og` при отладке с GDB? Когда какой использовать?",
+          "hint": "-O0 — ничего не оптимизировано, код медленный. -Og — оптимизации совместимые с отладкой, ближе к продакшн, отладчик не врёт о строках.",
+          "reference": "-O0: никаких оптимизаций. Каждая переменная в стеке, каждое выражение — отдельная операция. Достоинство: отладчик точно показывает каждую строку и переменную. Недостаток: код в 2-10× медленнее реального; профиль не соответствует продакшн поведению. -Og (GCC 4.8+): оптимизации не нарушающие однозначность строк: нет агрессивного инлайнинга, нет удаления 'ненужных' переменных, нет сильного переупорядочивания. Результат: поведение ближе к -O2, но GDB не показывает 'value optimized out', строки соответствуют коду. Рекомендация: -Og для разработки и отладки логических ошибок; -O0 только если -Og не помогает; профилировать только с -O2/-O3."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как установить conditional breakpoint в GDB срабатывающий только при конкретном значении переменной? Что если проверка медленная и программа при каждом срабатывании тормозит?",
+          "hint": "break file.c:42 if x == 100. Медленные условия: сужать до нужного call-site, использовать ignore N count, или аппаратные watchpoints.",
+          "reference": "break file.c:42 if x == 100 — простой случай. break func if strcmp(buf, \"error\") == 0 — вызов функции в условии (GDB вызывает её в контексте программы). condition 3 ptr != NULL && *ptr > 0 — добавить/изменить условие к bp #3. condition 3 — снять условие. Проблема медленных условий: GDB останавливает программу при каждом срабатывании bp, проверяет условие, продолжает если false. Если bp внутри цикла 10^6 итераций — программа замрёт. Решения: (1) ignore 1 9999 — пропустить первые 9999 срабатываний; (2) сузить bp до конкретного call-site; (3) watch x — аппаратный watchpoint вместо bp; (4) добавить assert() или if (unlikely(cond)) abort() в код."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Архитектура и production-применение",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как построить flame graph для production-системы без остановки сервиса? Какие ограничения и риски? Какие альтернативы через eBPF?",
+          "hint": "perf record -p PID -F 99 -g --sleep 30. Для JVM/Node — frame pointers. eBPF профилировщики: меньше overhead, работают без ptrace.",
+          "reference": "perf record -F 99 -p $PID -g -- sleep 30 — прикрепиться к живому процессу на 30 секунд, overhead ~1-2% CPU — допустимо. Затем: perf script | stackcollapse-perf.pl | flamegraph.pl > flame.svg. Требования: /proc/sys/kernel/perf_event_paranoid <= 1 или CAP_SYS_ADMIN. Ограничения: frame pointers нужны для call graph (скомпилировать с -fno-omit-frame-pointer); JVM требует -XX:+PreserveFramePointer; stripped binaries дадут неинформативные стеки. Риски: ptrace-overhead ~1-2% заметен на очень чувствительных сервисах. eBPF-альтернативы: bcc profile.py (-p $PID --flame-svg), py-spy (Python), async-profiler (JVM), rbspy (Ruby) — работают без ptrace через perf_event или uprobe, ~0.1% overhead. Ключевое преимущество eBPF: безопасны для ядра, минимальный overhead, не требуют ptrace."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как отладить программу которая крашится только под нагрузкой в production? Опиши многоуровневую стратегию от 'включить core dumps' до 'rr record & replay'.",
+          "hint": "Слои: core dumps → ASan в staging → rr record/replay → live attach GDB → perf под нагрузкой. Каждый уровень добавляет информацию.",
+          "reference": "Стратегия: (1) Core dumps: ulimit -c unlimited + kernel.core_pattern=/var/cores/core.%e.%p → gdb ./prog core → bt full — анализ постфактум. (2) ASan/TSan в staging с нагрузкой: gcc -fsanitize=address -g, воспроизвести load test. (3) rr record & replay (Mozilla): rr record ./prog под нагрузкой, rr replay → детерминированное воспроизведение в GDB, можно выполнять в обратном направлении. (4) ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 + core dumps: ASan в продакшн, при первой ошибке abort() → core с полным состоянием. (5) Live attach: gdb -p $PID, bt full, detach — быстрый снимок без kill. (6) perf record под нагрузкой: что нагружает CPU в момент проблемы. Принцип: не менять prod бинарник без нужды, работать с тем что есть, добавлять наблюдаемость послойно."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как использовать GDB Python scripting для автоматизации анализа? Покажи пример pretty-printer для кастомной структуры данных.",
+          "hint": "gdb.ValuePrinter, gdb.parse_and_eval(), frame.read_var(). Pretty-printer регистрируется через gdb.printing.register_pretty_printer.",
+          "reference": "GDB имеет встроенный Python 3. Базовый API: gdb.execute('bt') — команда GDB. gdb.selected_frame().read_var('x') — прочитать переменную. gdb.parse_and_eval('*ptr') — вычислить выражение. Пример pretty-printer для linked list: import gdb; class MyListPrinter: def __init__(self, val): self.val = val; def to_string(self): result = []; node = self.val['head']; while node: result.append(str(node['data'])); node = node['next']; return '[' + ', '.join(result) + ']'. Регистрация: pp = gdb.printing.RegexpCollectionPrettyPrinter('mylib'); pp.add_printer('MyList', '^MyList$', MyListPrinter); gdb.printing.register_pretty_printer(None, pp). Подключение: source ~/gdb_helpers.py в .gdbinit. Применения: обход структур данных, проверка инвариантов, batch-анализ всех потоков, автогенерация отчётов — без ручного ввода команд."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как устроена shadow memory в ASan технически? Как это определяет ограничение RLIMIT_AS и почему нельзя использовать ulimit -v с ASan?",
+          "hint": "shadow_addr = real_addr >> 3 + SHADOW_OFFSET. На 64-bit резервируется ~16TB виртуального пространства. RLIMIT_AS < 16TB → mmap fail при инициализации ASan.",
+          "reference": "Shadow memory адресация (64-bit): shadow_address = (real_address >> 3) + SHADOW_OFFSET. Для каждых 8 байт реальной памяти — 1 байт тени (3 бита сдвига). Значение байта тени: 0 = все 8 байт доступны; N (1-7) = только первые N байт доступны; отрицательное = весь блок недоступен (разные значения для heap redzones, stack redzones, freed memory, global redzones). ASan резервирует непрерывный shadow region через mmap — на 64-bit это ~16 TB виртуального адресного пространства. При каждом load/store компилятор вставляет: char shadow = *(char*)(addr >> 3 + SHADOW_OFFSET); if (shadow != 0) __asan_report_error(). При инициализации ASan делает mmap на 16 TB виртуального пространства. RLIMIT_AS (ulimit -v) ограничивает виртуальное пространство: если лимит < 16 TB — mmap провалится → программа не запустится. Поэтому ulimit -v и ASan несовместимы."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как использовать `perf probe` для добавления кастомных tracepoints без перекомпиляции? Покажи workflow: от добавления probe до записи событий и их анализа.",
+          "hint": "perf probe -x ./prog malloc → uprobe. perf probe --add 'file.c:42 var' → tracepoint на строку. perf record -e probe_prog:event → записать. perf script → вывести.",
+          "reference": "perf probe работает через uprobes (userspace) и kprobes (kernel). Workflow: (1) Список доступных точек: perf probe -x ./prog --funcs (функции); perf probe -x ./prog --vars main (переменные в main, нужны символы). (2) Добавить probe: perf probe -x ./prog malloc — uprobe на вход в malloc; perf probe -x ./prog 'malloc%return $retval' — на возврат с захватом результата; perf probe --add 'parser.c:88 bytes_read' — трacepoint на строку с захватом переменной (нужен -g). (3) Список probe: perf probe --list. (4) Запись: perf record -e 'probe_prog:malloc' -g ./prog. (5) Анализ: perf script — все события с timestamp; perf report — агрегация. (6) Удалить: perf probe --del '*'. Для ядра: perf probe --add 'tcp_sendmsg bytes' — tracepoint в ядре без перекомпиляции. Это мощная альтернатива printf-отладке для production."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Задания требуют запуска GDB, strace, perf на реальных программах и не могут быть автоматически проверены через компиляцию",
+      "questions": []
+    }
+  }
+}
