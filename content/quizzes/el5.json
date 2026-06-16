@@ -1,0 +1,210 @@
+{
+  "module": "el5",
+  "title": "EL5. Platform drivers: I2C и SPI",
+  "levels": {
+    "БАЗА": {
+      "desc": "Основы Linux driver model",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что такое devm_kzalloc и чем он отличается от kzalloc?",
+          "options": [
+            "devm_kzalloc работает быстрее благодаря специальному аллокатору",
+            "devm_kzalloc автоматически освобождает память при remove() устройства",
+            "devm_kzalloc выделяет память в DMA-доступной зоне",
+            "devm_kzalloc — устаревший вариант kzalloc"
+          ],
+          "answer": 1,
+          "explanation": "devm_* = device-managed. При вызове remove() (или ошибке в probe) ядро автоматически вызывает соответствующий cleanup. Защита от утечек памяти в драйверах."
+        },
+        {
+          "type": "mcq",
+          "text": "Как происходит matching device с driver в Linux device model для DT-устройств?",
+          "options": [
+            "По имени .ko файла модуля",
+            "По строке compatible через сравнение с of_match_table драйвера",
+            "По физическому адресу устройства",
+            "Автоматически по типу шины"
+          ],
+          "answer": 1,
+          "explanation": "Ядро сравнивает compatible из DT узла со всеми строками в of_device_id[] of_match_table драйвера. При совпадении вызывается probe(). MODULE_DEVICE_TABLE(of, ...) экспортирует таблицу для udev/modprobe."
+        },
+        {
+          "type": "mcq",
+          "text": "Какую функцию использует I2C клиент для чтения одного байта из регистра (SMBus совместимый способ)?",
+          "options": [
+            "i2c_read_register(client, reg)",
+            "i2c_smbus_read_byte_data(client, reg)",
+            "i2c_transfer_read(client, reg, 1)",
+            "i2c_recv(client, &reg, 1)"
+          ],
+          "answer": 1,
+          "explanation": "i2c_smbus_read_byte_data(client, reg) — формирует стандартную SMBus транзакцию: WRITE addr reg → READ addr 1 byte. Удобнее raw i2c_transfer для простых устройств."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое CPOL и CPHA в SPI?",
+          "options": [
+            "Clock POLarity и Clock PHAse — определяют режим SPI (0-3), влияют на полярность clock и момент сэмплирования",
+            "Clock Period и Clock Handler — настройки частоты",
+            "Counter POLling и Counter PHAse — счётчики статистики",
+            "Central Processing Logic и Phase — параметры CPU"
+          ],
+          "answer": 0,
+          "explanation": "CPOL=0: clock idle low; CPOL=1: idle high. CPHA=0: sample on first edge; CPHA=1: sample on second edge. Mode = CPOL<<1|CPHA. Неправильный режим = мусор в данных."
+        },
+        {
+          "type": "mcq",
+          "text": "Для чего используется MODULE_DEVICE_TABLE в коде драйвера?",
+          "options": [
+            "Регистрирует символьное устройство /dev/",
+            "Экспортирует таблицу ID для автозагрузки модуля через udev и modprobe при hotplug",
+            "Создаёт sysfs записи для устройства",
+            "Регистрирует обработчики прерываний"
+          ],
+          "answer": 1,
+          "explanation": "MODULE_DEVICE_TABLE(of, mydrv_of_match) генерирует alias записи в .ko файл. depmod читает их и строит modules.alias. При hotplug udev видит compatible → находит нужный .ko → modprobe."
+        },
+        {
+          "type": "mcq",
+          "text": "Что возвращает platform_get_irq() при ошибке?",
+          "options": [
+            "0 (нет прерывания)",
+            "ERR_IRQ (-1)",
+            "Отрицательный код errno (например -EINVAL, -ENXIO)",
+            "NULL"
+          ],
+          "answer": 2,
+          "explanation": "platform_get_irq() возвращает номер IRQ (> 0) при успехе или отрицательный error code при ошибке. Паттерн: irq = platform_get_irq(pdev, 0); if (irq < 0) return irq;"
+        },
+        {
+          "type": "mcq",
+          "text": "Какой API использует новый стиль работы с GPIO в ядре Linux?",
+          "options": [
+            "gpio_request() / gpio_direction_output() / gpio_set_value() (устарел)",
+            "gpiod_get() / gpiod_set_value() — descriptor-based API с поддержкой DT",
+            "ioctl() на /dev/gpiochip0",
+            "write() на /sys/class/gpio/"
+          ],
+          "answer": 1,
+          "explanation": "gpiod API: gpio = devm_gpiod_get(&pdev->dev, \"reset\", GPIOD_OUT_LOW); gpiod_set_value(gpio, 1). Автоматически читает reset-gpios из DT, обрабатывает GPIO_ACTIVE_LOW полярность."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает regmap в Linux kernel?",
+          "options": [
+            "Регистрирует DMA-совместимые области памяти",
+            "Предоставляет унифицированный API для работы с регистрами устройства (I2C/SPI/MMIO) с кэшированием и отладкой через debugfs",
+            "Маппирует физические адреса в виртуальные через ioremap",
+            "Управляет регионами адресного пространства ядра"
+          ],
+          "answer": 1,
+          "explanation": "devm_regmap_init_i2c(client, &config) → регистровый доступ через regmap_read/write/update_bits независимо от шины. Кэширование уменьшает I2C транзакции. Debugfs показывает все регистры."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Написание реальных драйверов",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Объясни почему devm_* функции критически важны в драйверах и что происходит при ошибке в probe если не использовать их.",
+          "hint": "Без devm_: при ошибке в середине probe нужно вручную освобождать все уже выделенные ресурсы в обратном порядке. С devm_: при возврате ошибки из probe ядро автоматически освобождает всё.",
+          "reference": "Раздел 2 модуля EL5: «Platform driver»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Напиши скелет I2C клиент драйвера: структуру i2c_driver, probe, remove, of_match_table. Покажи как прочитать WHO_AM_I регистр в probe.",
+          "hint": "module_i2c_driver(mydrv_driver); в probe: i2c_smbus_read_byte_data(client, WHO_AM_I_REG); проверить значение; dev_err_probe() при несовпадении",
+          "reference": "Раздел 3 модуля EL5: «I2C клиент драйвер»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как добавить GPIO сброса устройства в probe функцию платформенного драйвера? Покажи DTS и код.",
+          "hint": "DTS: reset-gpios = <&gpio3 5 GPIO_ACTIVE_LOW>; код: gpiod = devm_gpiod_get(&pdev->dev, \"reset\", GPIOD_OUT_HIGH); gpiod_set_value(gpiod, 0); udelay(10); gpiod_set_value(gpiod, 1);",
+          "reference": "Раздел 6 модуля EL5: «GPIO в ядре»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни разницу между i2c_smbus_read_byte_data и raw i2c_transfer. Когда нужен raw i2c_transfer?",
+          "hint": "SMBus: стандартные транзакции, проще. Raw i2c_transfer: нестандартные протоколы (combined messages, repeated start), устройства не совместимые с SMBus, блоки данных > 32 байт",
+          "reference": "Раздел 3.3 модуля EL5: «SMBus vs raw I2C»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить regmap для I2C устройства с 8-bit адресами регистров и 8-bit значениями? Покажи конфигурацию и использование.",
+          "hint": "regmap_config = {.reg_bits=8, .val_bits=8, .max_register=0xFF}; devm_regmap_init_i2c(client, &config); regmap_read/write/update_bits",
+          "reference": "Раздел 7 модуля EL5: «regmap»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как получить и включить clock в probe функции через Common Clock Framework? Что делают clk_prepare_enable и clk_disable_unprepare?",
+          "hint": "clk = devm_clk_get(&pdev->dev, \"baudclk\"); clk_prepare_enable(clk). prepare = готовит HW (может спать), enable = включает (не может спать). devm_clk_get → автоосвобождение",
+          "reference": "Раздел 5 модуля EL5: «Clock и reset management»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как отлаживать ситуацию когда platform_driver не вызывает probe — какие шаги диагностики?",
+          "hint": "1. dmesg | grep compatible 2. cat /sys/bus/platform/devices/ — есть ли устройство? 3. Проверить STATUS=okay в DTS 4. Проверить compatible строку точно 5. echo 'module mydrv +p' > dynamic_debug/control",
+          "reference": "Раздел 8 модуля EL5: «Отладка»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как SPI DTS свойства (spi-max-frequency, spi-cpol, spi-cpha) автоматически применяются к устройству в probe?",
+          "hint": "SPI core читает эти свойства при создании spi_device и устанавливает spi->max_speed_hz, spi->mode. В probe они уже доступны через spi->max_speed_hz и spi->mode.",
+          "reference": "Раздел 4 модуля EL5: «SPI device драйвер»"
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Продвинутые темы разработки драйверов",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как реализовать асинхронный I2C transfer с callback вместо блокирующего? В чём преимущества?",
+          "hint": "i2c_transfer_async() (если поддерживается контроллером) + callback; или workqueue + i2c_transfer в worker; преимущество: не блокирует IRQ контекст",
+          "reference": "Documentation/i2c/i2c-protocol.rst"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как написать один драйвер поддерживающий и I2C и SPI версию одного чипа через regmap абстракцию?",
+          "hint": "Общий код в mydrv_core.c с regmap API; i2c версия: devm_regmap_init_i2c; spi версия: devm_regmap_init_spi. Оба регистрируют одинаковый regmap_config.",
+          "reference": "Раздел 7 EL5 + примеры drivers/iio/imu/mpu6050/"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как тестировать I2C драйвер без реального железа с помощью i2c-stub kernel module?",
+          "hint": "modprobe i2c-stub chip_addr=0x28; modprobe mydrv; i2c_stub предоставляет виртуальный I2C адаптер; i2cset/i2cget для симуляции ответов",
+          "reference": "Documentation/i2c/i2c-stub.rst"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как реализовать power management (suspend/resume) в platform driver? Что такое runtime PM?",
+          "hint": "dev_pm_ops = {.suspend=mydrv_suspend, .resume=mydrv_resume}; runtime PM: pm_runtime_enable(), pm_runtime_get_sync()/put() — автовыключение при неиспользовании",
+          "reference": "Documentation/driver-api/runtime_pm.rst"
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему dev_err_probe() предпочтительнее dev_err() + return в probe функции? Когда она особенно важна?",
+          "hint": "dev_err_probe() не печатает ошибку если error == -EPROBE_DEFER (устройство ещё не готово, попробуем позже). Иначе dmesg засоряется ложными ошибками при порядке инициализации.",
+          "reference": "Раздел 3 EL5 + Documentation/driver-api/driver-model/driver.rst"
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания модуля",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-i2c-dummy",
+          "title": "Симуляция I2C регистрового файла сенсора"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-spi-dummy",
+          "title": "Симуляция SPI NOR flash: команды и транзакции"
+        }
+      ]
+    }
+  }
+}

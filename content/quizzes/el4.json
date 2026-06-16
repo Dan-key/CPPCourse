@@ -1,0 +1,199 @@
+{
+  "module": "el4",
+  "title": "EL4. Buildroot: корневая ФС",
+  "levels": {
+    "БАЗА": {
+      "desc": "Основы Buildroot",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что содержится в директории output/staging/ после сборки Buildroot?",
+          "options": [
+            "Финальный rootfs образ для прошивки",
+            "Sysroot — заголовки и библиотеки target системы для разработки приложений",
+            "Промежуточные объектные файлы сборки",
+            "Логи процесса сборки"
+          ],
+          "answer": 1,
+          "explanation": "output/staging/ = sysroot. Используется для кросс-компиляции приложений против правильных target библиотек. Не предназначен для прошивки — там есть лишние файлы разработчика."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем BR2_PACKAGE_HOST_XXX отличается от BR2_PACKAGE_XXX?",
+          "options": [
+            "HOST пакеты собираются для host машины (инструменты сборки), обычные — для target устройства",
+            "HOST пакеты устаревшие и не рекомендуются",
+            "Разницы нет — просто разные соглашения по именованию",
+            "HOST пакеты не имеют исходников"
+          ],
+          "answer": 0,
+          "explanation": "BR2_PACKAGE_HOST_GENIMAGE=y — genimage запускается на host для создания образа диска. BR2_PACKAGE_OPENSSH=y — openssh устанавливается в rootfs target устройства."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое rootfs overlay в Buildroot?",
+          "options": [
+            "RAID-массив для rootfs",
+            "Директория чьё содержимое копируется поверх сгенерированного rootfs перед упаковкой в образ",
+            "Временная файловая система в памяти",
+            "Резервная копия rootfs"
+          ],
+          "answer": 1,
+          "explanation": "BR2_ROOTFS_OVERLAY = board/myboard/rootfs-overlay/. Структура overlay повторяет структуру rootfs. Позволяет добавить /etc/hostname, init скрипты, конфигурацию без изменения пакетов."
+        },
+        {
+          "type": "mcq",
+          "text": "Зачем нужен SDK сгенерированный Buildroot (make sdk)?",
+          "options": [
+            "Для прошивки устройства",
+            "Портативный набор кросс-компилятора + sysroot для разработки приложений вне Buildroot",
+            "Для отладки ядра через JTAG",
+            "Для обновления пакетов через интернет"
+          ],
+          "answer": 1,
+          "explanation": "SDK содержит cross-compiler, sysroot с заголовками и библиотеками, pkgconfig файлы, скрипт environment-setup. Разработчик приложений может использовать SDK без установки полного Buildroot."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему squashfs предпочтителен для production rootfs на embedded устройствах?",
+          "options": [
+            "Squashfs быстрее ext4 при записи",
+            "Read-only сжатая ФС — защита от повреждения при неожиданном отключении питания, меньше место",
+            "Squashfs поддерживает ACL в отличие от ext4",
+            "Squashfs работает на NAND flash без MTD"
+          ],
+          "answer": 1,
+          "explanation": "Read-only = нет риска corruption при power loss. Сжатие (lzo/lz4/zstd) уменьшает размер. Data раздел отдельно (ext4/ubifs) — там можно писать. Обычная схема: squashfs rootfs + ext4 data."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает команда make myapp-rebuild в Buildroot?",
+          "options": [
+            "Полностью пересобирает всё дерево Buildroot",
+            "Пересобирает только пакет myapp без повторной сборки зависимостей",
+            "Удаляет пакет myapp из rootfs",
+            "Обновляет исходники myapp из репозитория"
+          ],
+          "answer": 1,
+          "explanation": "myapp-rebuild = reconfigure + rebuild + reinstall только для myapp. Зависимости не трогаются. make myapp-dirclean + make myapp — пересборка с нуля включая распаковку исходников."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое ccache в контексте Buildroot?",
+          "options": [
+            "Кэш загруженных исходников пакетов",
+            "Кэш скомпилированных объектных файлов — ускоряет повторные сборки",
+            "Кэш конфигурации menuconfig",
+            "Резервный репозиторий пакетов"
+          ],
+          "answer": 1,
+          "explanation": "BR2_CCACHE=y включает ccache. При повторной сборке ccache возвращает закэшированный .o вместо перекомпиляции. Экономит 50-80% времени при rebuild после небольших изменений."
+        },
+        {
+          "type": "mcq",
+          "text": "Что находится в директории output/images/ после успешной сборки Buildroot?",
+          "options": [
+            "PNG и JPEG файлы иконок системы",
+            "Готовые образы: rootfs.ext4, sdcard.img, Image (ядро), u-boot.bin — для прошивки",
+            "Промежуточные ELF файлы",
+            "Документация по образам"
+          ],
+          "answer": 1,
+          "explanation": "output/images/ — финальные артефакты: rootfs.ext4 (или .squashfs, .cpio), sdcard.img (если настроен genimage), скомпилированное ядро, u-boot.bin. Именно эти файлы прошиваются на устройство."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Как использовать Buildroot эффективно",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Опиши как добавить свой пакет с Makefile-based сборкой в Buildroot. Какие файлы нужно создать и что в них написать?",
+          "hint": "package/myapp/Config.in с config BR2_PACKAGE_MYAPP; package/myapp/myapp.mk с MYAPP_VERSION, MYAPP_SITE, MYAPP_SITE_METHOD=local, _BUILD_CMDS, _INSTALL_TARGET_CMDS; $(eval $(generic-package))",
+          "reference": "Раздел 4 модуля EL4: «Написание пакета Buildroot»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как использовать rootfs overlay для добавления кастомного init скрипта и файла /etc/hostname?",
+          "hint": "Создать board/myboard/rootfs-overlay/etc/hostname; board/.../etc/init.d/S99myapp; BR2_ROOTFS_OVERLAY в конфиге",
+          "reference": "Раздел 5 модуля EL4: «Board overlay»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как организовать NFS root разработку используя Buildroot rootfs? Что нужно настроить на сервере и в U-Boot?",
+          "hint": "make rootfs-tar → распаковать в /srv/nfs; /etc/exports; exportfs -ra; U-Boot bootargs с nfsroot= и ip=dhcp",
+          "reference": "Раздел EL3 раздел 7 + EL4 раздел 9"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как сгенерировать SDK из Buildroot и использовать его для компиляции приложения вне Buildroot окружения?",
+          "hint": "make sdk → output/images/*-sdk.tar.gz; распаковать; source environment-setup-*; make или cmake использует cross-compiler автоматически",
+          "reference": "Раздел 7 модуля EL4: «SDK»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить genimage для создания SD card образа с boot и rootfs разделами?",
+          "hint": "BR2_PACKAGE_HOST_GENIMAGE=y; board/.../genimage.cfg с partition table; BR2_ROOTFS_POST_IMAGE_SCRIPT вызывает genimage",
+          "reference": "Раздел 6 модуля EL4: «Форматы образов»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни разницу между «Buildroot toolchain» и «External toolchain» — когда что предпочесть?",
+          "hint": "Buildroot toolchain: собирает gcc из исходников, самый чистый sysroot, долго первый раз; External (Linaro): быстрее, фиксированная версия gcc, возможны несовместимости sysroot",
+          "reference": "Раздел 3 модуля EL4: «Конфигурация системы — Toolchain»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как написать post-build скрипт для кастомизации rootfs после сборки но до упаковки в образ?",
+          "hint": "BR2_ROOTFS_POST_BUILD_SCRIPT=board/myboard/post-build.sh; скрипт получает $1=TARGET_DIR; можно rm, ln -s, echo > файлы",
+          "reference": "Раздел 5 модуля EL4: «Post-build скрипты»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как проверить лицензионную совместимость всех пакетов в сборке Buildroot? Какую команду запустить и что она генерирует?",
+          "hint": "make legal-info → output/legal-info/ с lists пакетов и их лицензий, исходниками GPL пакетов для compliance",
+          "reference": "Раздел 9 Buildroot manual"
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Продвинутые возможности Buildroot",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как настроить Buildroot для создания rootfs на raw NAND flash через UBIFS?",
+          "hint": "BR2_TARGET_ROOTFS_UBIFS=y; BR2_PACKAGE_HOST_MTD=y для ubinize/mkfs.ubifs; настроить UBI volume size = flash size / eraseblock size",
+          "reference": "Раздел 6 EL4 + MTD документация"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как достичь reproducible builds в Buildroot? Что влияет на воспроизводимость?",
+          "hint": "SOURCE_DATE_EPOCH, фиксированные версии пакетов (не branch= в SITE), одинаковый toolchain, BR2_REPRODUCIBLE=y (экспериментально)",
+          "reference": "Buildroot manual раздел reproducible-builds"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как организовать multi-config Buildroot для нескольких вариантов платы из одного репозитория?",
+          "hint": "BR2_EXTERNAL для кастомных пакетов и конфигов; отдельные defconfig файлы per-board; Makefile-обёртка или CI jobs",
+          "reference": "Раздел 9 EL4 + Buildroot manual BR2_EXTERNAL"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить BR2_EXTERNAL для хранения кастомизаций отдельно от основного Buildroot дерева?",
+          "hint": "Создать external.mk, Config.in, external.desc в своём репозитории; make BR2_EXTERNAL=/path/to/external menuconfig — Buildroot видит пакеты и конфиги из external",
+          "reference": "Buildroot manual раздел BR2_EXTERNAL"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как интегрировать cmake-based пакет в Buildroot? Чем cmake-package отличается от generic-package?",
+          "hint": "$(eval $(cmake-package)) — автоматически вызывает cmake + make + make DESTDIR install; можно переопределить _CMAKE_BACKEND и _CONF_OPTS",
+          "reference": "Раздел 4 EL4 + Buildroot manual cmake-package"
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания",
+      "questions": []
+    }
+  }
+}

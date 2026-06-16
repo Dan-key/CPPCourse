@@ -1,0 +1,199 @@
+{
+  "module": "el3",
+  "title": "EL3. U-Boot: загрузчик",
+  "levels": {
+    "БАЗА": {
+      "desc": "Основы U-Boot и процесса загрузки",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что такое SPL в цепочке загрузки ARM?",
+          "options": [
+            "Simple Programming Language — язык для скриптов загрузчика",
+            "Secondary Program Loader — инициализирует аппаратуру (DDR, clocks) до загрузки U-Boot proper",
+            "Serial Port Logger — логирование через UART",
+            "System Patch Level — версия патчей"
+          ],
+          "answer": 1,
+          "explanation": "SPL ≤200KB помещается в SRAM (до инициализации DRAM). Его задача — инициализировать DDR, clocks, PMIC и загрузить U-Boot proper в DRAM."
+        },
+        {
+          "type": "mcq",
+          "text": "Какая команда U-Boot загружает файл по TFTP в RAM?",
+          "options": [
+            "load tftp 0x40200000 Image",
+            "tftp 0x40200000 Image",
+            "netload Image 0x40200000",
+            "tftpboot 0x40200000 Image"
+          ],
+          "answer": 1,
+          "explanation": "tftp <addr> <filename> — современная команда. tftpboot — старый алиас. Предварительно нужно настроить: setenv ipaddr, setenv serverip."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем команда booti отличается от bootm?",
+          "options": [
+            "booti для ARM64 (raw Image), bootm для uImage/FIT",
+            "bootm быстрее загружает ядро",
+            "Это одно и то же, просто синонимы",
+            "booti для U-Boot, bootm для Linux"
+          ],
+          "answer": 0,
+          "explanation": "booti — для ARM64 Linux Image (raw). bootm — для legacy uImage и FIT (работает на всех архитектурах). На RK3588 (AArch64) используется booti."
+        },
+        {
+          "type": "mcq",
+          "text": "Как сохранить переменные окружения U-Boot в энергонезависимую память?",
+          "options": [
+            "store_env",
+            "saveenv",
+            "setenv --save",
+            "flash_env"
+          ],
+          "answer": 1,
+          "explanation": "saveenv записывает все переменные окружения в flash (eMMC, SPI NOR или UBI). Место хранения задаётся CONFIG_ENV_OFFSET и CONFIG_ENV_SIZE при компиляции U-Boot."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое FIT image (Flattened Image Tree)?",
+          "options": [
+            "Формат файловой системы для flash памяти",
+            "Контейнер объединяющий ядро + DTB + initrd в один файл с подписью и проверкой целостности",
+            "Сжатый rootfs образ",
+            "Формат конфигурационных файлов U-Boot"
+          ],
+          "answer": 1,
+          "explanation": "FIT = ITS описание + mkimage → .itb файл. Преимущества: один файл вместо трёх (Image+dtb+initrd), поддержка RSA подписи (Secure Boot), поддержка нескольких конфигураций."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает команда md в U-Boot shell?",
+          "options": [
+            "Монтирует диск (mount disk)",
+            "Memory Display — дамп содержимого памяти по указанному адресу",
+            "Показывает метаданные системы",
+            "Управляет модулями драйверов"
+          ],
+          "answer": 1,
+          "explanation": "md 0x40200000 0x20 — показать 32 слова (0x20) начиная с адреса 0x40200000. Полезно для проверки что ядро или DTB загрузились правильно."
+        },
+        {
+          "type": "mcq",
+          "text": "Для чего нужен idbloader.img в экосистеме Rockchip?",
+          "options": [
+            "Образ инсталлятора дистрибутива",
+            "Упакованный TPL+SPL в формате понятном BootROM Rockchip SoC",
+            "Индексный файл для загрузчика",
+            "Драйвер для IDE накопителей"
+          ],
+          "answer": 1,
+          "explanation": "Rockchip BootROM ищет idbloader по фиксированному смещению на MMC/flash. Он содержит TPL (инициализация DDR, ~4KB) и SPL упакованные в особый формат."
+        },
+        {
+          "type": "mcq",
+          "text": "Где хранится переменная BOOTCOMMAND и как её изменить без пересборки U-Boot?",
+          "options": [
+            "Только в исходном коде — нужна пересборка",
+            "В переменных окружения U-Boot на flash: setenv bootcmd '...'; saveenv",
+            "В ядре Linux в /boot/grub/",
+            "В DTB файле"
+          ],
+          "answer": 1,
+          "explanation": "bootcmd — обычная переменная окружения U-Boot. Можно изменить через serial консоль: setenv bootcmd 'run netboot'; saveenv. DEFAULT в compile-time CONFIG_BOOTCOMMAND переопределяется env на flash."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Глубокое понимание U-Boot",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Опиши полную цепочку загрузки RK3588 от включения питания до старта Linux kernel. Что делает каждый этап?",
+          "hint": "ROM → TPL(SRAM, DDR init) → SPL(clock/PMIC) → TF-A(EL3 secure monitor) → U-Boot(загрузка Image+DTB) → kernel",
+          "reference": "Раздел 1 модуля EL3: «Процесс загрузки ARM SoC»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить TFTP + NFS boot для разработки без перепрошивки? Перечисли что нужно настроить на host и что в U-Boot.",
+          "hint": "Host: dnsmasq/tftpd для Image+DTB, NFS сервер для rootfs; U-Boot: setenv bootargs nfsroot=..., run netboot скрипт",
+          "reference": "Раздел 7 модуля EL3: «TFTP/NFS boot»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как создать FIT image объединяющий ядро, DTB и initrd в один файл? Опиши ITS файл и команду mkimage.",
+          "hint": "Написать .its файл с секциями images/kernel, images/fdt, images/ramdisk и configurations; mkimage -f image.its image.itb",
+          "reference": "Раздел 8 модуля EL3: «FIT Image»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как добавить новую команду в U-Boot shell? Какие файлы нужно создать/изменить?",
+          "hint": "Создать cmd/mycommand.c с U_BOOT_CMD(mycommand, ...) макросом; добавить в cmd/Makefile; enable в Kconfig",
+          "reference": "Раздел 10 модуля EL3: «Практика»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему важно правильно выбрать адрес загрузки ядра (kernel_addr_r)? Какие ограничения существуют?",
+          "hint": "Должен быть в DRAM (после DDR init), не перекрываться с U-Boot кодом/стеком, выровнен на 2MB для ARM64, оставить место для DTB после ядра",
+          "reference": "Раздел 5 модуля EL3: «Переменные окружения: адреса загрузки»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как работает saveenv и где физически хранятся переменные окружения?",
+          "hint": "CONFIG_ENV_OFFSET + CONFIG_ENV_SIZE в eMMC/SPI NOR, или раздел с CONFIG_ENV_IS_IN_MMC. Формат: CRC32 + key=value\\0 строки",
+          "reference": "Раздел 3 модуля EL3: «Конфигурационная система»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Какие шаги нужны для портирования U-Boot на новую плату основанную на RK3588?",
+          "hint": "1) defconfig на основе близкой платы 2) board/*.c (board_init) 3) include/configs/board.h 4) DTS с IO mux 5) DDR конфигурация 6) PMIC init в SPL",
+          "reference": "Раздел 6 модуля EL3: «Porting U-Boot»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как отлаживать раннюю загрузку когда U-Boot не выводит ничего на UART? Какие инструменты доступны?",
+          "hint": "Проверить pinmux UART в DTS/uboot, скорость UART, LED индикаторы, JTAG (OpenOCD), BootROM error codes через индикацию LED на некоторых платах",
+          "reference": "Раздел 9 модуля EL3: «Отладка U-Boot»"
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Продвинутые темы U-Boot",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как реализовать Secure Boot через FIT image с RSA подписью? Опиши процесс генерации ключей и встраивания публичного ключа в U-Boot.",
+          "hint": "openssl genrsa → RSA ключ; встроить pubkey в U-Boot DTB; подписать FIT через mkimage -F -k keydir; U-Boot проверяет подпись при bootm",
+          "reference": "Документация U-Boot: doc/uImage.FIT/signature.txt"
+        },
+        {
+          "type": "self_grade",
+          "text": "Какую роль играет TF-A (Trusted Firmware-A) в цепочке загрузки RK3588? Что такое BL31 и почему он нужен?",
+          "hint": "BL31 = EL3 secure monitor, предоставляет PSCI (CPU power management), SMC call interface. Остаётся в памяти и обслуживает secure world запросы от ядра",
+          "reference": "trustedfirmware.org, Раздел 1 EL3"
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое DDR init в SPL и почему его конфигурация специфична для каждой платы?",
+          "hint": "DDR PHY timing parameters зависят от конкретных чипов памяти на плате (Samsung vs Hynix), размещения, трассировки PCB. LPDDR5 на RK3588 требует сложной PHY калибровки",
+          "reference": "Раздел 6 модуля EL3"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить A/B update scheme (обновление по слотам) для OTA через U-Boot?",
+          "hint": "Два раздела kernel/rootfs (A и B), переменная boot_slot, логика попыток (bootcount/bootlimit), обновление неактивного слота",
+          "reference": "U-Boot документация: doc/android/ab-update.rst"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как портировать инициализацию PMIC в SPL для нового SoC? Что критично сделать правильно?",
+          "hint": "PMIC по I2C до DDR init? Нет, обычно SPL использует bitbang I2C без DMA, устанавливает VDDCORE для DDR voltage, затем DDR init. Неверное напряжение = DDR не инициализируется",
+          "reference": "Раздел 6 модуля EL3"
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания",
+      "questions": []
+    }
+  }
+}

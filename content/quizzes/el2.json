@@ -1,0 +1,210 @@
+{
+  "module": "el2",
+  "title": "EL2. Device Tree",
+  "levels": {
+    "БАЗА": {
+      "desc": "Базовые понятия Device Tree",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Зачем нужен Device Tree в Linux?",
+          "options": [
+            "Для настройки IP адреса устройства",
+            "Декларативное описание аппаратуры — замена board-specific C кода в arch/arm/mach-*/",
+            "Для хранения firmware обновлений",
+            "Для управления питанием процессора"
+          ],
+          "answer": 1,
+          "explanation": "До DT каждая плата имела свои C-файлы описывающие аппаратуру (board soup). DT вынес описание железа в декларативный текстовый формат, оставив ядру только универсальный код драйверов."
+        },
+        {
+          "type": "mcq",
+          "text": "Что определяет свойство compatible в узле DTS?",
+          "options": [
+            "Версию ядра Linux для этого устройства",
+            "Имя C-структуры драйвера",
+            "Список строк для сопоставления узла с драйвером через of_match_table",
+            "Адрес устройства в адресном пространстве"
+          ],
+          "answer": 2,
+          "explanation": "compatible = \"vendor,chipname\" — ядро ищет драйвер у которого в of_match_table есть совпадение. Список строк идёт от специфичного к общему: \"rockchip,rk3588-uart\", \"snps,dw-apb-uart\"."
+        },
+        {
+          "type": "mcq",
+          "text": "Что означает status = \"disabled\" в SoC DTS файле?",
+          "options": [
+            "Устройство физически отсутствует на плате",
+            "Ядро пропустит этот узел при инициализации — board DTS должен установить \"okay\" для включения",
+            "Устройство неисправно",
+            "Драйвер для этого устройства не загружен"
+          ],
+          "answer": 1,
+          "explanation": "SoC DTS описывает все встроенные периферийные блоки но отключает их (disabled). Board DTS включает только те что реально используются на конкретной плате через &uart0 { status = \"okay\"; }."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает утилита dtc?",
+          "options": [
+            "Device Tree Controller — управляет загрузкой DTB",
+            "Device Tree Compiler — компилирует DTS текст в DTB бинарник и обратно",
+            "Debug Trace Collector",
+            "Direct Transfer Cache"
+          ],
+          "answer": 1,
+          "explanation": "dtc -I dts -O dtb -o out.dtb in.dts — компиляция. dtc -I dtb -O dts -o out.dts in.dtb — дизассемблирование. Входит в пакет device-tree-compiler."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое phandle в DTS?",
+          "options": [
+            "Имя обработчика прерывания (Peripheral Handle)",
+            "Числовой идентификатор узла для ссылок между узлами",
+            "Размер регистрового блока",
+            "Имя GPIO контроллера"
+          ],
+          "answer": 1,
+          "explanation": "phandle — уникальный номер узла. Метка uart0: serial@ff180000 создаёт phandle. Ссылка &uart0 в другом узле транслируется в числовой phandle при компиляции."
+        },
+        {
+          "type": "mcq",
+          "text": "Какую функцию ядра использует платформенный драйвер для чтения u32 свойства из DT?",
+          "options": [
+            "platform_get_resource()",
+            "of_property_read_u32()",
+            "dt_get_u32_property()",
+            "devm_of_read()"
+          ],
+          "answer": 1,
+          "explanation": "of_property_read_u32(pdev->dev.of_node, \"clock-frequency\", &freq) — читает u32 свойство. Возвращает 0 при успехе или -EINVAL/-ENODATA если свойство не найдено."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему для 64-bit адресов нужен #address-cells = <2>?",
+          "options": [
+            "Для поддержки 2 устройств на одной шине",
+            "u32 ячейка = 32 бит; 64-bit адрес требует 2 ячейки: reg = <0x0 0xff180000 0x0 0x100>",
+            "Для совместимости с 32-bit ядром",
+            "Это устаревший формат не используемый в новых DTS"
+          ],
+          "answer": 1,
+          "explanation": "reg = <0x0 0xff180000 0x0 0x100> = [адрес_high адрес_low размер_high размер_low]. При #address-cells=<1> формат был бы reg = <0xff180000 0x100> — достаточно только для 32-bit адресов."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое DT Overlay?",
+          "options": [
+            "Утилита для визуализации Device Tree",
+            "DTBO файл который применяется поверх base DTB без перекомпиляции — добавляет узлы/свойства",
+            "Резервная копия DTB",
+            "Способ шифрования DTB"
+          ],
+          "answer": 1,
+          "explanation": "Overlay позволяет динамически изменять DT без перезагрузки. Используется для Raspberry Pi HAT, BeagleBone capes, A/B конфигураций одной платы. Компилируется с флагом dtc -@."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Как работает Device Tree в системе",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Опиши шаги от boot до вызова probe() платформенного драйвера. Как ядро сопоставляет DT узел с драйвером?",
+          "hint": "U-Boot передаёт DTB → ядро парсит DT → создаёт platform_device для каждого enabled узла → ищет driver с совпадающим compatible в of_match_table → вызывает probe()",
+          "reference": "Раздел 8 модуля EL2: «Platform driver — полный скелет»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как написать platform_driver поддерживающий два варианта compatible с разными настройками? Как передать данные варианта в probe?",
+          "hint": "of_device_id.data = указатель на struct с настройками; в probe: match = of_match_device(...); data = match->data",
+          "reference": "Раздел 8 модуля EL2: пример с enum variant и .data"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как платформенный драйвер получает MMIO маппинг через devm_platform_ioremap_resource? Что это делает под капотом?",
+          "hint": "platform_get_resource(IORESOURCE_MEM, 0) → request_mem_region → ioremap. devm_ = автоосвобождение при remove()",
+          "reference": "Раздел 7 модуля EL2: «of_* API»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как DT overlay применяется без перекомпиляции base DTB? Как это работает через configfs?",
+          "hint": "/sys/kernel/config/device-tree/overlays/<name>/, echo dtbo_data > dtbo; ядро merge overlay в live DT",
+          "reference": "Раздел 9 модуля EL2: «DT Overlay»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как проверить DTS файл на соответствие YAML binding схеме? Какую команду запустить?",
+          "hint": "make ARCH=arm64 dtbs_check — проверяет все DTB против Documentation/devicetree/bindings/*.yaml",
+          "reference": "Раздел 5 модуля EL2: «Bindings»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как с помощью of_parse_phandle получить device_node связанного устройства из DT?",
+          "hint": "struct device_node *np = of_parse_phandle(pdev->dev.of_node, \"clocks\", 0); затем of_property_read_* на np",
+          "reference": "Раздел 7 модуля EL2: «of_* API»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как протестировать platform_driver в QEMU без реального железа ARM? Что нужно подготовить?",
+          "hint": "QEMU virt машина, custom DTS с совместимым узлом, собрать ядро с драйвером, загрузить в qemu-system-aarch64",
+          "reference": "Раздел 8 модуля EL2: «DTS для тестирования в QEMU»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как прочитать Device Tree запущенного ядра из userspace? Назови как минимум два способа.",
+          "hint": "/sys/firmware/devicetree/base/ (sysfs), /sys/firmware/fdt + dtc, /proc/device-tree/ (если CONFIG_PROC_DEVICETREE)",
+          "reference": "Раздел 11 модуля EL2: «Отладка DT»"
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Глубокое понимание Device Tree",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как работает трансляция прерываний через interrupt-map? Приведи пример для PCI контроллера.",
+          "hint": "interrupt-map = <child-unit-addr child-irq-specifier parent-phandle parent-irq-specifier>; interrupt-map-mask фильтрует биты",
+          "reference": "devicetree.org/specifications — раздел interrupt nexus"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как написать YAML binding схему для нового устройства? Какие поля обязательны?",
+          "hint": "$id, $schema, title, properties (с compatible, reg, interrupts), required — смотри Documentation/devicetree/bindings/*.yaml",
+          "reference": "Раздел 5 модуля EL2: «Bindings — YAML формат»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как ядро обрабатывает конфликты свойств при применении overlay? Что происходит при попытке изменить read-only узел?",
+          "hint": "Overlay переопределяет свойства merge-ом. Protected nodes (ядро блокирует изменение cpus, memory). __symbols__ для label resolution",
+          "reference": "Документация ядра: Documentation/devicetree/overlay-notes.rst"
+        },
+        {
+          "type": "self_grade",
+          "text": "В чём разница между Device Tree и ACPI с точки зрения BSP разработчика? Когда ARM системы используют ACPI?",
+          "hint": "DT = статическое описание, просто, только embedded ARM; ACPI = динамическое, сложнее, требуется для UEFI/SBSA серверных ARM (Ampere, ARM Neoverse)",
+          "reference": "Bootlin embedded Linux training materials"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как реализовать live DT patch через configfs без перезагрузки системы? Какие ограничения существуют?",
+          "hint": "mkdir /sys/kernel/config/device-tree/overlays/myoverlay; echo dtbo > dtbo; ограничение: нельзя удалить узлы у которых есть активный driver",
+          "reference": "Раздел 9 модуля EL2: «DT Overlay»"
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания модуля",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-dts-parse",
+          "title": "Разбор DTS: чтение свойств платформенного устройства"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-platform-driver",
+          "title": "Минимальный platform_driver с of_match_table"
+        }
+      ]
+    }
+  }
+}

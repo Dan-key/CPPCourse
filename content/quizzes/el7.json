@@ -1,0 +1,205 @@
+{
+  "module": "el7",
+  "title": "EL7. CAN и последовательные интерфейсы",
+  "levels": {
+    "БАЗА": {
+      "desc": "Основы CAN и serial интерфейсов",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Сколько проводов использует стандартная CAN шина?",
+          "options": [
+            "1 (Single-Wire CAN)",
+            "2 (CANH и CANL)",
+            "3 (CANH, CANL, GND)",
+            "4 (CANH, CANL, VCC, GND)"
+          ],
+          "answer": 1,
+          "explanation": "CAN — дифференциальная шина: CANH и CANL. Разность напряжений CANH-CANL кодирует биты. GND общая с узлами, но не отдельный провод шины. 120 Ом терминаторы на каждом конце."
+        },
+        {
+          "type": "mcq",
+          "text": "Какой максимальный payload данных у классического CAN фрейма?",
+          "options": [
+            "4 байта",
+            "8 байт",
+            "16 байт",
+            "64 байта"
+          ],
+          "answer": 1,
+          "explanation": "CAN 2.0: максимум 8 байт данных (DLC = 8). CAN FD расширяет до 64 байт. Для больших данных используют CAN Transport Protocol (ISO 15765-2) с сегментацией."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает утилита candump?",
+          "options": [
+            "Создаёт резервную копию конфигурации CAN контроллера",
+            "Мониторинг и вывод всех CAN фреймов в реальном времени",
+            "Компилирует описание CAN протокола",
+            "Эмулирует CAN шину в userspace"
+          ],
+          "answer": 1,
+          "explanation": "candump can0 — показывает все фреймы: timestamp, interface, ID, dlc, data. Входит в пакет can-utils. candump -l can0 — запись в лог файл для последующего анализа."
+        },
+        {
+          "type": "mcq",
+          "text": "Какой RS стандарт поддерживает до 32 узлов на одной шине?",
+          "options": [
+            "RS-232",
+            "RS-422",
+            "RS-485",
+            "RS-530"
+          ],
+          "answer": 2,
+          "explanation": "RS-485: до 32 unit loads на одной шине (до 32 приёмников/передатчиков). RS-232: только point-to-point (2 устройства). RS-422: 1 передатчик + до 10 приёмников."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает функция cfmakeraw() при настройке termios?",
+          "options": [
+            "Устанавливает скорость 115200 бод",
+            "Переводит порт в сырой режим: отключает line discipline, echo, canonical mode",
+            "Сбрасывает все настройки к заводским умолчаниям",
+            "Включает RTS/CTS аппаратное управление потоком"
+          ],
+          "answer": 1,
+          "explanation": "cfmakeraw() устанавливает: ICANON=0 (не ждём \\n), ECHO=0, ISIG=0 (нет Ctrl+C), IXON=0 (нет Ctrl+S), OPOST=0 (нет output processing). Нужен для бинарных протоколов."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое ModBus function code 0x03?",
+          "options": [
+            "Write Single Register",
+            "Read Holding Registers",
+            "Read Coils (дискретные выходы)",
+            "Write Multiple Registers"
+          ],
+          "answer": 1,
+          "explanation": "0x03 = Read Holding Registers. Самый частый ModBus запрос: читает N регистров начиная с addr. Ответ: N*2 байт (каждый регистр = 16 бит, big-endian)."
+        },
+        {
+          "type": "mcq",
+          "text": "Какая структура используется для CAN фрейма в SocketCAN API?",
+          "options": [
+            "struct can_packet",
+            "struct can_frame",
+            "struct socketcan_frame",
+            "struct canfd_message"
+          ],
+          "answer": 1,
+          "explanation": "struct can_frame { uint32_t can_id; uint8_t can_dlc; uint8_t data[8]; } — в <linux/can.h>. Для CAN FD: struct canfd_frame с len и data[64]."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое CAN FD (Flexible Data-rate)?",
+          "options": [
+            "CAN с поддержкой full-duplex",
+            "Расширение CAN: payload до 64 байт и скорость данных до 8 Mbit/s в фазе данных",
+            "Финский национальный стандарт CAN",
+            "CAN для применения на открытом воздухе (Field Device)"
+          ],
+          "answer": 1,
+          "explanation": "CAN FD: фаза арбитража ≤ 1 Mbit/s (совместимость), фаза данных ≤ 8 Mbit/s (BRS бит включает ускорение), payload 0-64 байт. Обратно совместим по шине с классическим CAN."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Практическое использование CAN и serial",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Объясни механизм арбитража CAN. Как несколько узлов разрешают конфликт при одновременной попытке передачи?",
+          "hint": "CSMA/CD с bit-wise арбитражем: dominant (0) перекрывает recessive (1). Узел передающий 1 но видящий 0 — проиграл арбитраж и замолкает. Узел с меньшим ID побеждает.",
+          "reference": "Раздел 1 модуля EL7: «Протокол: арбитраж»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить SocketCAN интерфейс can0 для скорости 500Kbit/s и запустить мониторинг всех фреймов? Перечисли команды.",
+          "hint": "ip link set can0 type can bitrate 500000; ip link set can0 up; candump can0",
+          "reference": "Раздел 2 модуля EL7: «SocketCAN»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как написать C программу принимающую только CAN фреймы с ID от 0x100 до 0x1FF (диапазон 256 фреймов)?",
+          "hint": "struct can_filter = {.can_id=0x100, .can_mask=0x700}; setsockopt(fd, SOL_CAN_RAW, CAN_RAW_FILTER, &filter, sizeof(filter)). Маска 0x700 маскирует биты 8-10.",
+          "reference": "Раздел 3 модуля EL7: «SocketCAN API в C — фильтрация»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как реализовать управление направлением RS-485 (DE/RE) через DTS без userspace ioctl? Что нужно добавить в DTS узел UART?",
+          "hint": "linux,rs485-enabled-at-boot-time; rts-gpio = <&gpio...>; rs485-rts-delay-rts-before-send/after; UART драйвер автоматически управляет GPIO при передаче",
+          "reference": "Раздел 5.3 модуля EL7: «RS-485 управление»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое bit stuffing в CAN и зачем он нужен? Как это влияет на реальную пропускную способность?",
+          "hint": "После 5 одинаковых бит вставляется инвертированный бит. Нужен для синхронизации clock между узлами. Overhead: до 20% (worst case: 0101010...). Детектор stuffing error.",
+          "reference": "Раздел 1 модуля EL7: «Протокол CAN»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни все 4 комбинации VMIN/VTIME в termios. Как каждая влияет на поведение read()?",
+          "hint": "VMIN=0,VTIME=0: немедленно (неблокирующий); VMIN=0,VTIME>0: ждёт VTIME*0.1с или данные; VMIN>0,VTIME=0: ждёт N байт; VMIN>0,VTIME>0: ждёт min(VMIN байт, VTIME таймаут после первого)",
+          "reference": "Раздел 5.2 модуля EL7: «termios VMIN/VTIME»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как использовать libmodbus для чтения 10 holding registers с адреса 0 у ModBus slave устройства на /dev/ttyS0?",
+          "hint": "modbus_new_rtu → modbus_set_slave → modbus_connect → modbus_read_registers(ctx, 0, 10, regs) → modbus_close → modbus_free",
+          "reference": "Раздел 4 модуля EL7: «ModBus через RS-485»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как проверить физическую целостность CAN шины и счётчики ошибок? Что означают поля berr-counter в выводе ip -d link show can0?",
+          "hint": "berr-counter tx N rx M — счётчик ошибок шины. При превышении 127 → Error Passive, при 255 → Bus-Off. ip -s link show can0 для статистики. Физически: осциллограф для проверки уровней.",
+          "reference": "Раздел 7 модуля EL7: «Отладка CAN»"
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Продвинутые темы CAN и serial",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как реализовать собственный ModBus RTU framing без libmodbus? Что нужно учесть при формировании и разборе фрейма?",
+          "hint": "RTU frame = addr(1) + func(1) + data(N) + CRC16(2). CRC16 = полином 0xA001 (Modbus). 3.5 символьный gap между фреймами. Нет STX/ETX — фреймирование по таймауту.",
+          "reference": "Раздел 4 EL7 + Modicon ModBus Protocol Reference Guide"
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни типы CAN error frames. Как получить информацию об ошибках шины через SocketCAN?",
+          "hint": "Включить: setsockopt(fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask, sizeof); can_frame.can_id & CAN_ERR_FLAG → error frame; can_id содержит CAN_ERR_BUSOFF, CAN_ERR_CRTL и т.д.",
+          "reference": "Documentation/networking/can.rst — error frames section"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как синхронизировать системное время нескольких CAN узлов? Опиши протокол CAN Time Sync (CANopen SYNC или J1939 Time).",
+          "hint": "CANopen SYNC: периодический объект (PDO) с ID 0x080, периодом SYNC; получатели обновляют внутренний счётчик. Точность ~1мс без HW timestamping. С HW timestamp: SO_TIMESTAMPING через SocketCAN.",
+          "reference": "CiA 301 CANopen standard, SO_TIMESTAMPING в Documentation/networking/"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как написать CAN logger с разбором J1939 PGN из полученных фреймов? Что такое PGN и как он кодируется в 29-bit CAN ID?",
+          "hint": "J1939 29-bit ID: Priority(3) | Reserved(1) | DP(1) | PGN(16) | DA(8) | SA(8). PGN = PDU Format (PF) << 8 | PDU Specific (PS). libj1939 или ручной разбор через битовые операции.",
+          "reference": "SAE J1939/21 standard"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как диагностировать RS-485 проблему когда данные приходят с битовыми ошибками или вообще не приходят?",
+          "hint": "1. Осциллограф на CANH/CANL или TX/RX; 2. Проверить терминаторы (120Ом); 3. Проверить BAUD rate точность (stty -a); 4. Проверить DE/RE управление; 5. UART ошибки: dmesg grep uart; 6. Длина кабеля vs скорость",
+          "reference": "Раздел 7 модуля EL7: «Отладка UART»"
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания модуля",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-socketcan",
+          "title": "CAN фреймы: формирование, сериализация и фильтрация"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "module": "el1",
+  "title": "EL1. Кросс-компиляция и ARM toolchain",
+  "levels": {
+    "БАЗА": {
+      "desc": "Базовые понятия кросс-компиляции",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что означает «aarch64» в имени тулчейна aarch64-linux-gnu-gcc?",
+          "options": [
+            "ARM 32-bit архитектура (ARMv7)",
+            "ARM 64-bit архитектура (AArch64 / ARMv8-A)",
+            "Advanced RISC Chipset 64",
+            "Псевдоним для x86_64"
+          ],
+          "answer": 1,
+          "explanation": "aarch64 — это 64-битный режим ARMv8-A. RK3588 использует Cortex-A76/A55 (ARMv8.2-A), поэтому toolchain aarch64-linux-gnu-."
+        },
+        {
+          "type": "mcq",
+          "text": "Какой флаг gcc указывает sysroot для кросс-компиляции?",
+          "options": [
+            "--root=<dir>",
+            "--sysroot=<dir>",
+            "-sysroot=<dir>",
+            "-I<dir>"
+          ],
+          "answer": 1,
+          "explanation": "gcc --sysroot=/path/to/sysroot заставляет компилятор искать заголовки в <sysroot>/usr/include и библиотеки в <sysroot>/lib и <sysroot>/usr/lib."
+        },
+        {
+          "type": "mcq",
+          "text": "Какая переменная задаёт целевую архитектуру при сборке ядра Linux?",
+          "options": [
+            "TARGET",
+            "ARCH",
+            "PLATFORM",
+            "CPU_ARCH"
+          ],
+          "answer": 1,
+          "explanation": "make ARCH=arm64 — для AArch64 (RK3588). make ARCH=arm — для 32-bit ARM. Это стандартная переменная системы сборки ядра."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем arm-none-eabi-gcc отличается от aarch64-linux-gnu-gcc?",
+          "options": [
+            "arm-none-eabi для ARMv8, aarch64 для ARMv7",
+            "arm-none-eabi для baremetal без ОС (Cortex-M), aarch64-linux-gnu для 64-bit Linux с glibc",
+            "Это одно и то же, просто разные имена",
+            "arm-none-eabi устарел и не поддерживается"
+          ],
+          "answer": 1,
+          "explanation": "arm-none-eabi: none=нет ОС, eabi=Embedded ABI, нет glibc — для STM32/Cortex-M. aarch64-linux-gnu: linux ОС, gnu=glibc — для RK3588 и подобных."
+        },
+        {
+          "type": "mcq",
+          "text": "Что показывает команда: file hello_arm",
+          "options": [
+            "Размер бинарника в байтах",
+            "Архитектуру, тип ELF, ABI — позволяет убедиться что бинарник собран для правильной цели",
+            "Список экспортируемых символов",
+            "Зависимости от разделяемых библиотек"
+          ],
+          "answer": 1,
+          "explanation": "file(1) читает magic bytes и ELF заголовок. Выведет: «ELF 64-bit LSB executable, ARM aarch64» для корректно кросс-скомпилированного файла."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое QEMU user-mode (qemu-aarch64-static)?",
+          "options": [
+            "Полная эмуляция системы с ядром ARM",
+            "Запуск ARM бинарника на x86 через трансляцию системных вызовов",
+            "Отладчик для ARM бинарников",
+            "Кросс-компилятор на основе LLVM"
+          ],
+          "answer": 1,
+          "explanation": "qemu-aarch64-static запускает один ARM бинарник, транслируя его syscall в host Linux syscall. Полезен для запуска тестов без реального железа. Ограничение: нет реальной эмуляции периферии (I2C, SPI, GPIO)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое DTB в контексте загрузки ARM ядра?",
+          "options": [
+            "Debug Trace Buffer — буфер трассировки",
+            "Device Tree Blob — бинарное описание аппаратного обеспечения платы",
+            "Dynamic Thread Buffer",
+            "Data Transfer Bus — шина передачи данных"
+          ],
+          "answer": 1,
+          "explanation": "DTB (Device Tree Blob) = скомпилированный DTS файл. U-Boot передаёт его ядру при загрузке: booti ${kernel_addr_r} - ${fdt_addr_r}. Ядро читает DTB чтобы узнать что есть на плате."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему нельзя использовать /lib/modules/$(uname -r)/build для кросс-компиляции LKM?",
+          "options": [
+            "Можно, это стандартный способ",
+            "Там находятся заголовки host ядра (x86), а нам нужны заголовки target ядра (ARM)",
+            "$(uname -r) не работает в Makefile",
+            "LKM нельзя кросс-компилировать"
+          ],
+          "answer": 1,
+          "explanation": "$(uname -r) возвращает версию запущенного (host) ядра на x86. Для кросс-компиляции LKM нужен KDIR указывающий на исходники/заголовки целевого ARM ядра той же версии что на устройстве."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Как и почему работает кросс-компиляция",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Опиши полный процесс сборки ядра Linux для RK3588 с нуля — перечисли команды по шагам начиная от git clone.",
+          "hint": "ARCH=arm64, CROSS_COMPILE=aarch64-linux-gnu-, defconfig для rockchip, make Image dtbs modules",
+          "reference": "Раздел 4 модуля EL1: «Сборка ядра Linux для ARM»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как настроить gdbserver на ARM устройстве и подключиться к нему с хоста через кросс-gdb? Какие команды нужны на каждой стороне?",
+          "hint": "gdbserver :1234 ./prog на target, aarch64-linux-gnu-gdb + target remote IP:1234 на host",
+          "reference": "Раздел 6 модуля EL1: «Отладка: gdb + gdbserver»"
+        },
+        {
+          "type": "self_grade",
+          "text": "В чём принципиальная разница между qemu-system-aarch64 и qemu-aarch64-static? Когда использовать каждый?",
+          "hint": "system = полная эмуляция с ядром и bootloader; user = только один процесс, транслируются syscall",
+          "reference": "Раздел 5 модуля EL1: «QEMU для embedded разработки»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как собрать out-of-tree kernel module для другой архитектуры и другой версии ядра? Что нужно изменить в Makefile?",
+          "hint": "KDIR=/path/to/arm-kernel-headers, ARCH=arm64, CROSS_COMPILE=aarch64-linux-gnu- в make командe",
+          "reference": "Раздел 4 модуля EL1 и раздел 7 «Переменные сборки»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему pkg-config при кросс-компиляции требует специальной настройки? Какие переменные окружения нужно установить?",
+          "hint": "PKG_CONFIG_PATH должен указывать на sysroot/usr/lib/pkgconfig, PKG_CONFIG_SYSROOT_DIR",
+          "reference": "Раздел 3 модуля EL1: «Sysroot — корень чужой системы»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясни BUILD/HOST/TARGET тройку в toolchain. Что каждое обозначает? Когда BUILD != HOST?",
+          "hint": "BUILD = машина где запускается configure, HOST = где будет запускаться компилятор, TARGET = где будет запускаться результат",
+          "reference": "Раздел 1 модуля EL1: «Три части toolchain»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое sysroot и как его получить для Debian-based дистрибутива на target устройстве?",
+          "hint": "multistrap/debootstrap, или output/staging/ из Buildroot, или распаковать rootfs и использовать как sysroot",
+          "reference": "Раздел 3 модуля EL1: «Sysroot»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как прошить образ на RK3588 через USB с помощью rkdeveloptool? Опиши порядок действий.",
+          "hint": "Устройство в maskrom режиме (зажать кнопку), rkdeveloptool ld, rkdeveloptool db loader.bin, rkdeveloptool wl offset image.img",
+          "reference": "Раздел 9 модуля EL1: «Методы доставки образа»"
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Глубокие вопросы для опытных",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как организовать NFS-root разработку для быстрого цикла правка→тест без перепрошивки SD карты? Что нужно на host и target сторонах?",
+          "hint": "NFS сервер (exports), U-Boot с nfsroot= в bootargs, сетевое подключение host-target",
+          "reference": "Раздел 7 модуля EL3 и раздел 9 EL1"
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему статическая линковка не всегда решает проблему несовместимости glibc? Приведи конкретный пример когда статический бинарник всё равно зависит от версии libc.",
+          "hint": "NSS (Name Service Switch): getaddrinfo, getpwnam используют dlopen для загрузки nss_*.so динамически даже в статическом бинарнике",
+          "reference": "Раздел 8 модуля EL1: «ABI»"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как убедиться что .ko модуль ядра совместим с запущенным ядром на устройстве? Что такое vermagic строка?",
+          "hint": "modinfo module.ko | grep vermagic, сравнить с uname -r, LOCALVERSION и CONFIG_MODULE_SIG",
+          "reference": "Раздел 4 модуля EL1"
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое multilib и зачем на 64-bit ARM системе могут быть нужны 32-bit библиотеки?",
+          "hint": "Запуск 32-bit ARMv7 приложений на AArch64 ядре (через compat layer), старые бинарники, некоторые vendor blob",
+          "reference": "Раздел 8 модуля EL1"
+        },
+        {
+          "type": "self_grade",
+          "text": "Как организовать CI/CD pipeline для embedded проекта с автотестами через QEMU system-mode? Что тестировать в QEMU, а что только на реальном железе?",
+          "hint": "QEMU: unit тесты, userspace code, basic kernel boot; реальное железо: HW-специфичные драйверы, timing, реальные периферийные устройства",
+          "reference": "Раздел 5 модуля EL1"
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания модуля",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-endian-detect",
+          "title": "Определение endianness и byte swap без UB"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-cross-hello",
+          "title": "Hello ARM: кросс-компиляция и проверка ELF"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "03-abi-struct",
+          "title": "ABI: sizeof, offsetof и сериализация структур"
+        }
+      ]
+    }
+  }
+}
