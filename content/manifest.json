@@ -129,8 +129,16 @@
           "tag": "новое",
           "file": null,
           "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "lang": "cpp",
+          "exercises": [
+            {"id": "01-timeout-manager", "title": "Менеджер таймаутов на min-heap (один timerfd на тысячи)"},
+            {"id": "02-debounce",        "title": "Debounce: схлопнуть пачку событий в одно действие"},
+            {"id": "03-token-bucket",    "title": "Token bucket: rate limiter"},
+            {"id": "04-shutdown-fsm",    "title": "Конечный автомат graceful shutdown демона"},
+            {"id": "05-signalfd-counter","title": "signalfd: дренаж + coalescing vs queueing"},
+            {"id": "06-inotify-dirwatch","title": "inotify: модель каталога через события"}
+          ],
+          "status": "ready"
         },
         {
           "id": "c5",
