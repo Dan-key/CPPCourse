@@ -93,10 +93,18 @@
           "id": "c2",
           "title": "C2. epoll и io_uring",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/06-C2-epoll-io-uring.md",
+          "quiz": "quizzes/c2.json",
+          "lang": "cpp",
+          "exercises": [
+            {"id": "01-nonblocking-io",      "title": "Неблокирующий I/O: O_NONBLOCK, EAGAIN, дренаж"},
+            {"id": "02-epoll-echo",          "title": "epoll эхо-сервер (level-triggered)"},
+            {"id": "03-epoll-edge-triggered","title": "epoll эхо-сервер (edge-triggered) — грабли ET"},
+            {"id": "04-timerfd",             "title": "timerfd в epoll-loop"},
+            {"id": "05-eventfd",             "title": "eventfd: разбудить loop из другого потока"},
+            {"id": "06-io-uring-read",       "title": "Сырой io_uring: одно чтение через кольца"}
+          ],
+          "status": "ready"
         },
         {
           "id": "c3",

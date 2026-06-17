@@ -1,0 +1,90 @@
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <thread>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+int echo_server(int listen_fd, int stop_fd);
+
+static int g_run = 0, g_pass = 0;
+#define CHECK(cond, msg) do { \
+    ++g_run; \
+    if (cond) { ++g_pass; std::printf("  [OK]   %s\n", msg); } \
+    else      {           std::printf("  [FAIL] %s\n", msg); } \
+} while (0)
+
+// Создать слушающий неблокирующий сокет на 127.0.0.1:0, вернуть fd и порт.
+static int make_listener(int& port) {
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    int yes = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+    sockaddr_in a{}; a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); a.sin_port = 0;
+    bind(fd, (sockaddr*)&a, sizeof a);
+    listen(fd, 128);
+    socklen_t sl = sizeof a;
+    getsockname(fd, (sockaddr*)&a, &sl);
+    port = ntohs(a.sin_port);
+    return fd;
+}
+
+// Блокирующий клиент: подключиться, отправить msg, прочитать ровно msg.size()
+// байт эха. Вернуть полученное.
+static std::string roundtrip(int port, const std::string& msg) {
+    int c = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in a{}; a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    a.sin_port = htons((uint16_t)port);
+    if (connect(c, (sockaddr*)&a, sizeof a) != 0) { close(c); return "<connect failed>"; }
+    size_t off = 0;
+    while (off < msg.size()) {
+        ssize_t w = write(c, msg.data() + off, msg.size() - off);
+        if (w <= 0) break;
+        off += (size_t)w;
+    }
+    std::string got;
+    char buf[4096];
+    while (got.size() < msg.size()) {
+        ssize_t r = read(c, buf, sizeof buf);
+        if (r <= 0) break;
+        got.append(buf, (size_t)r);
+    }
+    close(c);
+    return got;
+}
+
+int main() {
+    std::printf("=== 02-epoll-echo ===\n");
+
+    int port = 0;
+    int listen_fd = make_listener(port);
+    int stop_fd   = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    CHECK(listen_fd >= 0 && port > 0 && stop_fd >= 0, "слушающий сокет и stop-eventfd готовы");
+
+    int srv_rc = 123;
+    std::thread server([&] { srv_rc = echo_server(listen_fd, stop_fd); });
+
+    bool all_ok = true;
+    for (int i = 0; i < 20; ++i) {
+        std::string msg = "message-number-" + std::to_string(i) + "\n";
+        std::string got = roundtrip(port, msg);
+        if (got != msg) { all_ok = false; std::printf("  клиент %d: ждал %zu Б, получил %zu\n",
+                                                       i, msg.size(), got.size()); }
+    }
+    CHECK(all_ok, "все 20 клиентов получили корректное эхо");
+
+    // Остановить сервер.
+    uint64_t one = 1;
+    if (write(stop_fd, &one, sizeof one) < 0) { /* ignore */ }
+    server.join();
+
+    CHECK(srv_rc == 0, "echo_server штатно вернул 0 по stop_fd");
+
+    close(listen_fd); close(stop_fd);
+
+    std::printf("\n%d/%d тестов пройдено\n", g_pass, g_run);
+    return (g_pass == g_run) ? 0 : 1;
+}
