@@ -110,10 +110,18 @@
           "id": "c3",
           "title": "C3. IPC и разделяемая память",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/07-C3-ipc-shared-memory.md",
+          "quiz": "quizzes/c3.json",
+          "lang": "cpp",
+          "exercises": [
+            {"id": "01-fdpass",      "title": "Передача дескриптора через UNIX-сокет (SCM_RIGHTS)"},
+            {"id": "02-posix-shm",   "title": "POSIX разделяемая память (shm_open + mmap)"},
+            {"id": "03-shm-spsc",    "title": "Lock-free SPSC-очередь в shared memory (межпроцессно)"},
+            {"id": "04-futex-mutex", "title": "Мьютекс на futex (машина 0/1/2)"},
+            {"id": "05-posix-mqueue","title": "POSIX очередь сообщений (приоритеты)"},
+            {"id": "06-posix-sem",   "title": "Bounded buffer на POSIX-семафорах"}
+          ],
+          "status": "ready"
         },
         {
           "id": "c4",
