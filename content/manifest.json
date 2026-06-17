@@ -60,7 +60,10 @@
           "tag": "есть",
           "file": "modules/04-F4-debugging-tools.md",
           "quiz": "quizzes/f4.json",
-          "exercises": [],
+          "exercises": [
+            {"id": "01-asan-hunt", "title": "ASan-охота: heap-overflow, OOB, use-after-free"},
+            {"id": "02-gdb-logic", "title": "GDB: отладка логических ошибок без краша"}
+          ],
           "status": "ready"
         }
       ]
@@ -73,10 +76,18 @@
           "id": "c1",
           "title": "C1. Конкурентность и модель памяти",
           "tag": "закрепить",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/05-C1-concurrency-memory-model.md",
+          "quiz": "quizzes/c1.json",
+          "lang": "cpp",
+          "exercises": [
+            {"id": "01-spsc-queue",    "title": "Lock-free SPSC ring buffer на acquire/release"},
+            {"id": "02-ttas-spinlock", "title": "TTAS-спинлок на std::atomic"},
+            {"id": "03-seqlock",       "title": "Seqlock: один писатель, много читателей"},
+            {"id": "04-false-sharing", "title": "False sharing: выравнивание по линии кэша"},
+            {"id": "05-treiber-stack", "title": "Lock-free Treiber stack (CAS + ordering)"},
+            {"id": "06-mcs-lock",      "title": "MCS lock: масштабируемый справедливый спинлок"}
+          ],
+          "status": "ready"
         },
         {
           "id": "c2",

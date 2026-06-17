@@ -1,0 +1,9 @@
+# Скомпилированные артефакты упражнений
+content/exercises/**/prog
+*.o
+*.ko
+a.out
+
+# Python
+__pycache__/
+*.pyc

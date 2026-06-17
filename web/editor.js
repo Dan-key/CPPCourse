@@ -91,12 +91,16 @@ async function renderPracticePanel(moduleId, exercises, el, openId) {
 async function openExercise(moduleId, ex, detail, prog, itemEl) {
   detail.innerHTML = '<p style="color:var(--text-faint)">Загрузка…</p>';
 
-  /* Загрузить проблему (problem.md) и стартер (starter.c) */
+  /* Загрузить проблему (problem.md) и стартер (starter.cpp → запасной starter.c) */
   const base = `../content/exercises/${moduleId}/${ex.id}/`;
-  const [problemRes, starterRes] = await Promise.all([
-    fetch(base + "problem.md").catch(() => null),
-    fetch(base + "starter.c").catch(() => null)
-  ]);
+  const problemRes = await fetch(base + "problem.md").catch(() => null);
+
+  let starterRes = await fetch(base + "starter.cpp").catch(() => null);
+  let srcName = "solution.cpp";
+  if (!starterRes || !starterRes.ok) {
+    starterRes = await fetch(base + "starter.c").catch(() => null);
+    srcName = "solution.c";
+  }
 
   const problemMd  = problemRes && problemRes.ok  ? await problemRes.text()  : null;
   const starterCode = starterRes && starterRes.ok ? await starterRes.text() : "";
@@ -123,7 +127,7 @@ async function openExercise(moduleId, ex, detail, prog, itemEl) {
 
   const editorLabel = document.createElement("div");
   editorLabel.className = "editor-label";
-  editorLabel.innerHTML = `<span>solution.c</span>
+  editorLabel.innerHTML = `<span>${srcName}</span>
     ${isDone ? '<span class="editor-done-badge">✓ Пройдено</span>' : ''}`;
   editorWrap.appendChild(editorLabel);
 

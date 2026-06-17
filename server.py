@@ -38,9 +38,17 @@ DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 # ---------- Compile flags ----------
 
+# C-упражнения (этапы 1, 2B-ядро, 2C-embedded)
 COMPILE_FLAGS = [
     "-std=c17", "-Wall", "-Wextra", "-Wconversion", "-Wsign-conversion",
     "-fsanitize=address,undefined", "-O1", "-g"
+]
+
+# C++-упражнения (этап 2A userspace — std::atomic, std::thread, RAII).
+# -Wconversion/-Wsign-conversion здесь не включаем: в C++ они шумят на STL.
+CXX_COMPILE_FLAGS = [
+    "-std=c++20", "-Wall", "-Wextra",
+    "-fsanitize=address,undefined", "-O1", "-g", "-pthread"
 ]
 
 # ---------- Resource limits ----------
@@ -55,17 +63,24 @@ def _set_resource_limits():
 
 def run_exercise(module_id: str, exercise_id: str, user_code: str) -> dict:
     ex_dir = EXERCISES_DIR / module_id / exercise_id
-    test_c = ex_dir / "test.c"
-    if not test_c.exists():
+
+    # Язык определяем по наличию test.cpp (C++) или test.c (C).
+    test_cpp = ex_dir / "test.cpp"
+    test_c   = ex_dir / "test.c"
+    if test_cpp.exists():
+        compiler, flags, src_name, test_file = "g++", CXX_COMPILE_FLAGS, "solution.cpp", test_cpp
+    elif test_c.exists():
+        compiler, flags, src_name, test_file = "gcc", COMPILE_FLAGS, "solution.c", test_c
+    else:
         return {"error": "not_found", "message": f"{module_id}/{exercise_id} не найдено"}
 
     with tempfile.TemporaryDirectory(prefix="cppcourse_") as tmp:
         tmp = Path(tmp)
-        (tmp / "solution.c").write_text(user_code)
+        (tmp / src_name).write_text(user_code)
         try:
             comp = subprocess.run(
-                ["gcc"] + COMPILE_FLAGS + [
-                    str(tmp / "solution.c"), str(test_c), "-o", str(tmp / "prog")
+                [compiler] + flags + [
+                    str(tmp / src_name), str(test_file), "-o", str(tmp / "prog")
                 ],
                 capture_output=True, text=True, timeout=30
             )
@@ -331,8 +346,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
+            self.send_header("Connection", "keep-alive")  # Cache-Control добавит end_headers()
             self._cors()
             self.end_headers()
 
@@ -347,6 +361,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     # ---- helpers ----
+
+    def end_headers(self):
+        # Отключаем кэш для ВСЕХ ответов, включая статику (web/*.js, *.css).
+        # Иначе браузер показывает старую версию после правок интерфейса.
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -374,12 +394,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     has_gcc   = shutil.which("gcc")
+    has_gxx   = shutil.which("g++")
     ai_status = check_ollama_status()
     qemu_ok   = check_qemu_status()["available"]
 
     with ThreadingServer(("127.0.0.1", PORT), Handler) as httpd:
         print(f"Курс:  http://127.0.0.1:{PORT}/")
         print(f"GCC:   {'OK' if has_gcc else 'не найден — установи build-essential'}")
+        print(f"G++:   {'OK' if has_gxx else 'не найден — установи g++ (для C++ упражнений этапа 2A)'}")
         print(f"QEMU:  {'OK' if qemu_ok else 'не готов (scripts/qemu-setup.sh)'}")
         if ai_status["available"]:
             print(f"Ollama: OK — модели: {', '.join(ai_status['models'])}")

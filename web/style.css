@@ -454,7 +454,33 @@ html, body {
 }
 
 .quiz-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 18px;
+}
+
+.quiz-header-main {
+  min-width: 0;
+}
+
+.quiz-reset-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--red, #e5534b);
+  background: var(--bg-elev-2);
+  color: var(--red, #e5534b);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quiz-reset-btn:hover {
+  background: var(--red, #e5534b);
+  color: #fff;
 }
 
 .quiz-title {
