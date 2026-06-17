@@ -127,8 +127,8 @@
           "id": "c4",
           "title": "C4. Сигналы, таймеры, inotify",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
+          "file": "modules/08-C4-signals-timers-inotify.md",
+          "quiz": "quizzes/c4.json",
           "lang": "cpp",
           "exercises": [
             {"id": "01-timeout-manager", "title": "Менеджер таймаутов на min-heap (один timerfd на тысячи)"},

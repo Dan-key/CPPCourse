@@ -1,0 +1,220 @@
+{
+  "module": "c5",
+  "title": "C5 — Демоны и сервисы",
+  "levels": {
+    "БАЗА": {
+      "desc": "Термины — отвечать мгновенно",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что такое демон?",
+          "options": [
+            "Программа с графическим интерфейсом",
+            "Фоновый долгоживущий процесс без управляющего терминала, обслуживающий запросы (sshd, nginx, crond)",
+            "Системный вызов запуска процесса",
+            "Вирус в системе"
+          ],
+          "answer": 1,
+          "explanation": "Демон работает в фоне, без управляющего tty, обычно постоянно; его усыновляет PID 1 (init/systemd). Управляется сигналами/сокетом. Имя — от «daemon» (полезный незримый дух), к имени добавляют d (sshd)."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем `Type=notify` отличается от `Type=simple`?",
+          "options": [
+            "Ничем",
+            "simple запускается быстрее",
+            "При simple сервис «готов» сразу после exec (готовность не проверяется); при notify — когда сам прислал READY=1 через sd_notify, что закрывает гонку готовности",
+            "notify работает только для D-Bus"
+          ],
+          "answer": 2,
+          "explanation": "Type=simple считает сервис готовым в момент exec — до того, как он открыл сокет/прогрел кэш, поэтому зависимые юниты стартуют рано и получают ECONNREFUSED. Type=notify: «готов» = сервис прислал READY=1, когда действительно готов."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое socket activation?",
+          "options": [
+            "Сервис сам делает bind на порт",
+            "systemd открывает слушающий сокет сам и передаёт его сервису по наследству (fd с номера 3) — сокет переживает рестарт сервиса, нет ECONNREFUSED, bind делает systemd (даже на порт <1024)",
+            "Способ ускорить TCP",
+            "Шифрование сокета"
+          ],
+          "answer": 1,
+          "explanation": "systemd (по .socket-юниту) делает socket+bind+listen и при подключении запускает сервис, передав готовый fd. Сервис не делает bind — берёт сокет из sd_listen_fds. Выигрыши: нет ECONNREFUSED при рестарте, параллельная загрузка, on-demand, privilege separation."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает `sd_notify(\"READY=1\")`?",
+          "options": [
+            "Перезапускает сервис",
+            "Закрывает сокет",
+            "Сообщает systemd, что сервис полностью готов — для Type=notify это завершает старт, и зависимые юниты могут стартовать",
+            "Записывает PID-файл"
+          ],
+          "answer": 2,
+          "explanation": "Это датаграмма в $NOTIFY_SOCKET с телом READY=1. systemd помечает старт завершённым; After=/Requires=-зависимые юниты ждут именно этого момента. Слать надо ПОСЛЕ реальной готовности (bind/прогрев)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое watchdog сервиса в systemd?",
+          "options": [
+            "Антивирус",
+            "Логгер",
+            "Механизм «я жив»: сервис обязан слать WATCHDOG=1 каждые WATCHDOG_USEC/2; не прислал в срок → systemd считает повисшим и перезапускает",
+            "Ограничитель памяти"
+          ],
+          "answer": 2,
+          "explanation": "Watchdog (WatchdogSec= в юните) ловит «жив, но завис»: процесс есть в ps, а запросы не обслуживает. Пинг WATCHDOG=1 каждые полпериода; пропуск → kill+restart. Пинговать надо из основного loop, чтобы он отражал реальную живость."
+        },
+        {
+          "type": "mcq",
+          "text": "Как сервис должен логировать под systemd?",
+          "options": [
+            "Писать в свой файл /var/log/myapp.log с ротацией",
+            "Писать в stdout/stderr — journald их ловит и кладёт в структурированный журнал (journalctl -u); уровень через префикс <N>",
+            "Через syslog() обязательно",
+            "Не логировать вообще"
+          ],
+          "answer": 1,
+          "explanation": "Под systemd сервис не открывает свои лог-файлы и не ходит в syslog — просто пишет в stdout/stderr, journald ловит. Ротация/диск/права — забота journald. Префикс <N> задаёт syslog-уровень (3=err, 6=info) структурно."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое graceful shutdown (drain) сервиса?",
+          "options": [
+            "Мгновенно убить процесс по SIGKILL",
+            "По SIGTERM перестать принимать НОВЫЕ запросы, доделать уже принятые (in-flight) и только потом выйти — чтобы не оборвать активные запросы",
+            "Перезагрузить машину",
+            "Очистить кэш"
+          ],
+          "answer": 1,
+          "explanation": "systemctl stop шлёт SIGTERM, ждёт TimeoutStopSec, потом SIGKILL. Сервис обязан в это окно: STOPPING=1, перестать accept, доделать in-flight, выйти. Это разница между «убили» и «корректно остановили без обрыва»."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему под systemd new-style демон НЕ делает double-fork и не пишет PID-файл?",
+          "options": [
+            "Это просто мода",
+            "systemd сам запускает сервис в фоне и отслеживает ВСЕ его процессы через cgroup (надёжнее PID-файла); double-fork под Type=simple/notify заставит systemd считать главный процесс завершённым",
+            "double-fork запрещён ядром",
+            "PID-файлы больше не поддерживаются"
+          ],
+          "answer": 1,
+          "explanation": "systemd берёт на себя фон, перезапуск, логи, права; процессы трекает cgroup (точно, без протухания PID-файла). Double-fork под Type=simple/notify ломает учёт состояния. New-style демон работает в переднем плане — ноль кода демонизации."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Объяснить, как и почему работает",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Опиши шаги классической демонизации (double-fork) и зачем ВТОРОЙ fork. Почему под systemd это не нужно и даже вредно?",
+          "hint": "fork→setsid→fork→chdir/umask→/dev/null; второй fork = не лидер сессии; под systemd — передний план.",
+          "reference": "Классика: (1) fork — родитель выходит (мы не лидер группы, шелл свободен); (2) setsid — новая сессия без управляющего терминала, мы лидер сессии; (3) ВТОРОЙ fork — теперь мы НЕ лидер сессии, поэтому случайное открытие tty не даст нам управляющий терминал (иначе SIGHUP/SIGINT с него убивали бы демон); (4) chdir(/) — не держать ФС; (5) umask(0); (6) перенаправить stdin/out/err в /dev/null. Под systemd это НЕ нужно: сервис работает в переднем плане, а фон/перезапуск/логи/права берёт супервизор. Хуже — ВРЕДНО: при Type=simple/notify, если форкнуть и родитель выйдет, systemd решит, что главный процесс завершился, и спутает состояние сервиса."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как работает socket activation на уровне протокола? Какие переменные окружения, зачем сверять LISTEN_PID, с какого fd идут сокеты, и какие выигрыши?",
+          "hint": "LISTEN_PID/LISTEN_FDS/LISTEN_FDNAMES; SD_LISTEN_FDS_START=3; сверка getpid; 4 выигрыша.",
+          "reference": "systemd открывает сокет (socket+bind+listen) и передаёт его сервису по наследству. Сервис узнаёт детали из env: LISTEN_PID (кому предназначены — сверить с getpid(), иначе примешь чужие fd, утёкшие в потомка), LISTEN_FDS (число N — дескрипторы занимают 3..3+N-1, SD_LISTEN_FDS_START=3), LISTEN_FDNAMES (имена через ':' из FileDescriptorName=). Выигрыши: (1) нет ECONNREFUSED при рестарте (сокет открыт до сервиса, клиенты ждут в backlog); (2) параллельная загрузка (сокеты открыты сразу, подключения буферизуются); (3) запуск по требованию (on-demand); (4) privilege separation (systemd-root биндит порт <1024, сервис работает без рута). Это упражнение 01-listen-fds."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как устроен протокол sd_notify? Назови ключевые сообщения и где они нужны.",
+          "hint": "Датаграмма в $NOTIFY_SOCKET, тело KEY=VALUE через \\n; READY/RELOADING+MONOTONIC_USEC/STOPPING/WATCHDOG/STATUS.",
+          "reference": "sd_notify шлёт датаграмму в AF_UNIX-сокет из $NOTIFY_SOCKET; тело — строки KEY=VALUE через \\n. READY=1 — «полностью готов» (для Type=notify завершает старт). RELOADING=1 + MONOTONIC_USEC=<n> — «начал reload» (с v253 метка времени обязательна). STOPPING=1 — «начал штатную остановку» (не считать падением). WATCHDOG=1 — heartbeat watchdog. STATUS=<текст> — человекочитаемый статус в systemctl status. ERRNO=, MAINPID=, FDSTORE=1 (отдать fd на хранение), EXTEND_TIMEOUT_USEC= (продлить таймаут). Если NOTIFY_SOCKET не задан — sd_notify должен быть no-op. Это упражнение 02-sd-notify."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как работает watchdog и почему пинговать раз в ПОЛОВИНУ периода и ИЗ ОСНОВНОГО loop?",
+          "hint": "WATCHDOG_USEC, interval=usec/2, пинг из loop (отражает реальную живость).",
+          "reference": "В юните WatchdogSec=; systemd передаёт WATCHDOG_USEC (период, мкс) и WATCHDOG_PID. Сервис шлёт sd_notify(WATCHDOG=1) каждые WATCHDOG_USEC/2 — половина даёт запас на джиттер планировщика/сети (пропустив один пинг из-за всплеска, успеешь до дедлайна). Пинговать надо ИЗ ОСНОВНОГО event-loop (или по timerfd в нём), чтобы пинг отражал РЕАЛЬНУЮ обработку: зависший loop не успеет пингнуть → systemd перезапустит. Если повесить пинг на отдельный «всегда живой» поток — зависший loop не детектится, watchdog бесполезен. Продвинуто: пинговать только при ПРОГРЕССЕ (обработали события), а не при самом факте итерации. Это упражнение 03-watchdog."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как сервис дренирует in-flight при остановке? Опиши состояния и почему внутренний дедлайн < TimeoutStopSec.",
+          "hint": "RUNNING→DRAINING (не принимать)→STOPPED (active==0 или дедлайн); дедлайн < TimeoutStopSec иначе SIGKILL раньше.",
+          "reference": "По SIGTERM: STOPPING=1, перестать принимать новые (снять listen с epoll), доделать активные (in-flight). Учёт: admit() при приёме (active++, только в RUNNING), finish() при завершении (active--); begin_shutdown() → DRAINING (новые admit отклоняются); STOPPED когда active==0 (все доделаны — ни один не потерян); timeout() форсирует STOPPED (зависшие не ждём вечно). Внутренний drain-дедлайн (timerfd) ОБЯЗАН быть < TimeoutStopSec юнита, иначе systemd пошлёт SIGKILL РАНЬШЕ, чем graceful успеет, и часть in-flight оборвётся. Например, дедлайн 25 c при TimeoutStopSec=30s. Это упражнение 04-drain-tracker."
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему systemd выбрал cgroup-трекинг вместо PID-файлов? Назови три проблемы PID-файлов и что даёт cgroup.",
+          "hint": "Гонки, протухание (PID reuse), неполнота (не видит детей); cgroup — все процессы, надёжно, + лимиты.",
+          "reference": "Проблемы PID-файлов: (1) гонки создания/чтения; (2) протухание — процесс упал/убит SIGKILL, файл остался; хуже — PID переиспользован, и сигнал уйдёт не тому (гонка reuse, как у pidfd); (3) неполнота — знает один PID, а сервис нафоркал воркеров → их PID-файл не видит, при остановке утекут. cgroup (control group): systemd помещает ВСЕ процессы сервиса в свою cgroup, потомки наследуют → ядро точно знает все процессы (нет протухания/неполноты), остановка убивает весь cgroup (KillMode=control-group — никто не утечёт), плюс лимиты ресурсов (MemoryMax/CPUQuota/TasksMax) бесплатно. Поэтому new-style сервис не пишет PID-файл."
+        },
+        {
+          "type": "self_grade",
+          "text": "Чем graceful RELOAD (SIGHUP) отличается от graceful SHUTDOWN (SIGTERM)? Что сохраняется, что сливается?",
+          "hint": "Reload — перечитать конфиг без остановки, соединения живут; shutdown — drain и выход.",
+          "reference": "Reload (SIGHUP, через ExecReload=/bin/kill -HUP $MAINPID): перечитать конфиг БЕЗ остановки — сервис продолжает обслуживать, просто применяет новые настройки, соединения НЕ рвутся, процесс НЕ выходит (шлёт RELOADING=1 → READY=1 вокруг). Shutdown (SIGTERM): drain in-flight и ВЫХОД процесса. Разница: reload сохраняет соединения и процесс и не прекращает приём; shutdown сливает соединения и выходит. Оба graceful (не рвут in-flight), но reload не останавливает приём новых, а shutdown — останавливает."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как сервис логирует под systemd и зачем префикс <N>? Почему не свои файлы?",
+          "hint": "stdout/stderr → journald; <N> = syslog-уровень структурно; journald даёт ротацию/индексацию/корреляцию.",
+          "reference": "Сервис пишет в stdout/stderr — journald ловит и кладёт в структурированный журнал. journalctl -u myapp фильтрует по юниту/времени/PID/уровню без grep по файлам. Префикс <N> задаёт syslog-уровень СТРУКТУРНО (3=err, 4=warning, 6=info, 7=debug), поэтому journalctl -p err работает по полю, а не по тексту. Не свои файлы — потому что journald сам ротирует/ограничивает диск/чистит, даёт единый формат (все сервисы коррелируются по времени), не нужны права на /var/log и logrotate, автоматически добавляет _PID/_UID/_SYSTEMD_UNIT. Грабли: stdout буферизуется — под systemd printf может зависнуть в буфере; лечение line-buffering/fflush/stderr. Структурно — sd_journal_send с полями KEY=VALUE."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Рассуждение и проектирование",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Zero-downtime reload: как передать слушающий сокет новому экземпляру? Опиши три подхода и кто держит сокет в каждом.",
+          "hint": "Socket activation (systemd держит), SO_REUSEPORT (каждый экземпляр), master/worker+fd (master).",
+          "reference": "Проблема: наивный stop→start даёт окно, когда порт никто не слушает → ECONNREFUSED. Нужно, чтобы слушающий сокет не закрывался ни на миг, и новый экземпляр принимал, пока старый дренирует. (А) Socket activation: сокет принадлежит systemd, при рестарте сервиса остаётся открытым, новый экземпляр получает ТОТ ЖЕ сокет по наследству (sd_listen_fds); самый чистый, минимум кода. (Б) SO_REUSEPORT: несколько экземпляров независимо bind на тот же порт, ядро балансирует; поднять новый, дать старому drain; нужна внешняя координация. (В) master/worker+fd (nginx): master держит listen-сокет, форкает новых воркеров (наследуют сокет), старым шлёт graceful quit; передача нового бинаря через exec с наследованием fd / SCM_RIGHTS. Во всех трёх ключ: слушающий сокет переживает смену рабочих процессов; различие — кто держит. Под systemd — socket activation."
+        },
+        {
+          "type": "self_grade",
+          "text": "Watchdog: как не зависнуть незаметно? Почему пинг из основного loop, а не из отдельного потока, и как это соотносится с liveness vs readiness?",
+          "hint": "Пинг отражает реальную обработку; отдельный поток всегда пингует → бесполезно; liveness=watchdog, readiness=READY/health.",
+          "reference": "Сервис может не упасть, но зависнуть (loop застрял, дедлок) — снаружи «жив», запросы не идут. Watchdog ловит это: WATCHDOG=1 каждые WATCHDOG_USEC/2; пропуск → systemd kill (WatchdogSignal, по умолчанию SIGABRT для core dump) + restart (on-watchdog). КРИТИЧНО пинговать из ОСНОВНОГО loop (или по timerfd в нём) и в идеале только при ПРОГРЕССЕ обработки: тогда зависший обработчик не успеет пингнуть. Отдельный «всегда живой» поток-пингер бесполезен — он пингует даже при зависшем loop. Это и есть LIVENESS («жив ли вообще») — отличать от READINESS («можно ли слать трафик», READY=1/health). Liveness должна проверять ТОЛЬКО себя; если завязать её на зависимость (БД), временная недоступность БД перезапустит здоровый сервис (каскадный сбой). Соответствует k8s livenessProbe vs readinessProbe."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как НЕ потерять in-flight запросы при рестарте сервиса? Собери полный протокол (сокет, трафик, drain, дедлайн).",
+          "hint": "Сокет у systemd; healthz→503 (LB выводит); перестать accept; drain in-flight; дедлайн<TimeoutStopSec; lame-duck keep-alive.",
+          "reference": "Полный zero-downtime-протокол: (1) слушающий сокет держит systemd (socket activation) — новый экземпляр принимает на том же сокете, пока старый дренирует, порт не падает. (2) По SIGTERM: STOPPING=1; healthz отдаёт 503 → балансировщик выводит из ротации (нужна пауза на распространение — gap/preStop sleep, иначе последние запросы прилетят в закрывающийся процесс → 5xx). (3) Перестать accept (снять listen с epoll). (4) keep-alive ответы с Connection: close (lame-duck), чтобы клиенты не слали новые в это соединение. (5) Доделать in-flight (drain-трекер: STOPPED когда active==0). (6) Зависшие закрыть по дедлайну (timerfd), дедлайн < TimeoutStopSec, иначе SIGKILL оборвёт. Соответствует k8s: terminationGracePeriodSeconds, preStop, readinessProbe."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как обеспечить least privilege сервиса через unit-файл (sandbox)? Назови механизмы и их связь с контейнерами.",
+          "hint": "User/DynamicUser, ProtectSystem/PrivateTmp, NoNewPrivileges, CapabilityBoundingSet, SystemCallFilter(seccomp); те же namespaces/cgroups/seccomp, что в контейнерах.",
+          "reference": "Декларативно в [Service], без кода: User=/DynamicUser= (временный пользователь на время работы); NoNewPrivileges= (setuid-бинари бессильны); ProtectSystem=strict (ФС read-only кроме разрешённого), ProtectHome=, PrivateTmp= (свой /tmp = mount namespace); ReadWritePaths=/StateDirectory= (что можно писать); CapabilityBoundingSet=CAP_NET_BIND_SERVICE (оставить только нужные capabilities); SystemCallFilter=@system-service (seccomp-allowlist), ~@privileged (снять опасные); MemoryDenyWriteExecute= (W^X); RestrictAddressFamilies=. Это ТЕ ЖЕ примитивы ядра, что у контейнеров: namespaces (PrivateTmp/ProtectSystem/PrivateNetwork), cgroups (лимиты), seccomp, capabilities — разница лишь в упаковке (контейнер несёт образ ФС). Жёсткий юнит по изоляции не уступает контейнеру. Проверка: systemd-analyze security. Принцип: сервис имеет доступ только к тому, что реально нужно."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое FDSTORE и когда он нужен? Чем отличается от socket activation?",
+          "hint": "FDSTORE=1 + SCM_RIGHTS → systemd хранит fd сервиса через рестарт; для сохранения самих СОЕДИНЕНИЙ/дорогих fd, не только listen-сокета.",
+          "reference": "FDSTORE — fd store systemd: сервис шлёт sd_notify(FDSTORE=1) ВМЕСТЕ с дескриптором (через SCM_RIGHTS, sendmsg с control message), systemd ХРАНИТ этот fd у себя. При рестарте сохранённые fd возвращаются сервису как переданные дескрипторы (sd_listen_fds с именами из FDNAME=). FileDescriptorStoreMax= ограничивает число. Нужен, чтобы пережить рестарт С СОСТОЯНИЕМ: сохранить активные СОЕДИНЕНИЯ или дорогие дескрипторы (открытые устройства, прогретые mmap), которые жалко переоткрывать. Отличие от socket activation: та сохраняет только СЛУШАЮЩИЙ сокет (его держит systemd по .socket-юниту), а FDSTORE — произвольные fd, включая принятые соединения, явно отданные сервисом. Для большинства хватает socket activation (listen переживает рестарт, in-flight дренируются); FDSTORE — когда нельзя терять сами соединения."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Реализуй и прогони под автотестами (ASan/UBSan)",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-listen-fds",
+          "title": "Socket activation: разбор переданных дескрипторов (sd_listen_fds)"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-sd-notify",
+          "title": "Протокол sd_notify (Type=notify)"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "03-watchdog",
+          "title": "Watchdog: пейсер WATCHDOG=1"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "04-drain-tracker",
+          "title": "Graceful drain: учёт in-flight запросов"
+        }
+      ]
+    }
+  }
+}
