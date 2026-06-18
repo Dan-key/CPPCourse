@@ -1,0 +1,220 @@
+{
+  "module": "k1",
+  "title": "K1 — Драйверы символьных устройств",
+  "levels": {
+    "БАЗА": {
+      "desc": "Термины — отвечать мгновенно",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что такое LKM и char device?",
+          "options": [
+            "Язык программирования ядра",
+            "LKM — Loadable Kernel Module (загружаемый модуль ядра, .ko); char device — символьное устройство, с которым работают как с потоком байт через /dev/... (read/write)",
+            "Файловая система",
+            "Протокол сети"
+          ],
+          "answer": 1,
+          "explanation": "LKM грузится/выгружается в работающее ядро (insmod/rmmod) без перезагрузки. Char device — простейшая модель драйвера: поток байт через узел /dev (терминалы, /dev/null, сенсоры)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое major и minor номер устройства?",
+          "options": [
+            "Версия драйвера",
+            "Размер и тип",
+            "major — номер ДРАЙВЕРА (класса устройств), minor — номер ЭКЗЕМПЛЯРА внутри драйвера; вместе упакованы в dev_t",
+            "Адреса в памяти"
+          ],
+          "answer": 2,
+          "explanation": "Узел /dev имеет (тип, major, minor). По major ядро находит драйвер, по minor — конкретное устройство. dev_t упаковывает пару (MAJOR/MINOR/MKDEV). alloc_chrdev_region выдаёт major динамически."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое struct file_operations?",
+          "options": [
+            "Список открытых файлов",
+            "Таблица указателей на функции драйвера (open/read/write/ioctl/poll/mmap), по которой VFS вызывает драйвер на сисколлы над fd",
+            "Права доступа к файлу",
+            "Буфер ввода-вывода"
+          ],
+          "answer": 1,
+          "explanation": "file_operations — сердце драйвера: dispatch table, которую VFS зовёт на каждый сисколл над дескриптором устройства. read(fd) → file->f_op->read → твой my_read. Это интерфейс, который ты потреблял в C2, а здесь реализуешь."
+        },
+        {
+          "type": "mcq",
+          "text": "Зачем нужны __user и copy_to_user/copy_from_user?",
+          "options": [
+            "Для скорости",
+            "Userspace-указатель (__user) нельзя разыменовать в ядре напрямую (чужое адресное пространство, может быть невалиден, дыра безопасности) — только copy_*_user безопасно копируют через границу",
+            "Для логирования",
+            "Для шифрования"
+          ],
+          "answer": 1,
+          "explanation": "Адрес из userspace может быть невалиден/не resident, и прямое разыменование = oops или дыра безопасности. copy_*_user проверяют адрес, копируют с обработкой page fault, возвращают число НЕскопированных байт (0=успех, иначе -EFAULT)."
+        },
+        {
+          "type": "mcq",
+          "text": "Зачем MODULE_LICENSE(\"GPL\") в модуле?",
+          "options": [
+            "Необязательная формальность",
+            "Обязательно: без неё ядро помечается tainted и модулю недоступны GPL-only символы (а их много); лицензия — часть ABI модуля",
+            "Защищает код от копирования",
+            "Ускоряет загрузку"
+          ],
+          "answer": 1,
+          "explanation": "MODULE_LICENSE обязательна. Без GPL-совместимой лицензии ядро «tainted» и не даёт модулю звать EXPORT_SYMBOL_GPL-функции. module_init/exit — точки входа/выхода (insmod/rmmod)."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем kernel space отличается от userspace для разработчика?",
+          "options": [
+            "Ничем",
+            "Нет стандартной библиотеки C (свои kmalloc/printk), маленький стек (8 КБ), нельзя спать в атомарном контексте, код параллелен по умолчанию, ошибка = oops/паника (не segfault)",
+            "Только синтаксисом",
+            "Kernel space медленнее"
+          ],
+          "answer": 1,
+          "explanation": "Ядро — другая среда: нет libc/malloc/printf (есть kmalloc/printk), стек 8 КБ (большие буферы — kmalloc), нет float, нельзя разыменовать userspace-указатель, SMP+preemption (параллелизм), цена ошибки — вся машина."
+        },
+        {
+          "type": "mcq",
+          "text": "Где драйвер выводит сообщения (не в stdout)?",
+          "options": [
+            "В файл /tmp",
+            "В stdout процесса",
+            "В журнал ядра через printk/pr_info, читаемый dmesg (или journalctl -k); уровни как syslog",
+            "Никуда"
+          ],
+          "answer": 2,
+          "explanation": "Драйвер не имеет stdout — он пишет printk/pr_info/pr_err в кольцевой журнал ядра, читаемый dmesg. Oops тоже идёт в dmesg (с Call Trace — где упало). Не спамь printk на горячем пути."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое out-of-tree модуль и version magic?",
+          "options": [
+            "Модуль без лицензии",
+            "Out-of-tree — модуль, собираемый ОТДЕЛЬНО против установленного ядра (Kbuild, M=); version magic — версия ядра, зашитая в .ko: несовпадение → insmod падает (ABI ядра нестабилен)",
+            "Модуль в дереве ядра",
+            "Подписанный модуль"
+          ],
+          "answer": 1,
+          "explanation": "Out-of-tree собирается против /lib/modules/$(uname -r)/build. ABI ядра между версиями нестабилен, поэтому .ko несёт version magic и грузится только в своё ядро (иначе -ENOEXEC). In-tree модули правят вместе с ядром."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Объяснить, как и почему работает",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как зарегистрировать символьное устройство, чтобы появился /dev/cppchar? Опиши шаги и порядок отката.",
+          "hint": "alloc_chrdev_region → cdev_init/add → class_create → device_create; откат в обратном порядке.",
+          "reference": "Шаги: (1) alloc_chrdev_region(&dev_num,0,1,name) — выделить dev_t (ядро даёт major). (2) cdev_init(&cdev,&fops); cdev.owner=THIS_MODULE; cdev_add(&cdev,dev_num,1) — связать (major,minor) с file_operations и зарегистрировать (после этого устройство АКТИВНО — fops могут вызвать немедленно, поэтому состояние инициализируй ДО). (3) class_create(name) (одноаргументная с 6.4) — создать класс; IS_ERR/PTR_ERR для проверки. (4) device_create(class,NULL,dev_num,NULL,name) — devtmpfs создаст узел /dev/cppchar по uevent. Откат при ошибке — ЗЕРКАЛЬНЫЙ (goto-cleanup, Ф1): device_destroy → class_destroy → cdev_del → unregister_chrdev_region → kfree. Перепутаешь порядок (kfree буфера до cdev_del пока открыто) — use-after-free в ядре. Проще — miscdevice (один minor, авто-узел)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Реализуй read корректно: роль *ppos, copy_to_user, что вернуть на EOF и ошибку.",
+          "hint": "*ppos двигать; 0 на EOF (иначе cat зациклится); copy_to_user!=0 → -EFAULT; n байт при успехе.",
+          "reference": "read(file, ubuf, count, *ppos): под мьютексом. Если *ppos >= data_len → вернуть 0 (EOF) — ИНАЧЕ cat зациклится (будет звать read бесконечно). Иначе n = min(count, data_len - *ppos); if (copy_to_user(ubuf, buffer+*ppos, n)) return -EFAULT; *ppos += n; вернуть n. Ключевое: *ppos обязателен (ядро хранит позицию, ты двигаешь); вернуть число ОТДАННЫХ байт (>0), 0 (EOF), <0 (-errno). copy_to_user возвращает число НЕскопированных (0=успех). Частичный read — норма (userspace дозовёт). copy_to_user может СПАТЬ (page fault) → нельзя под спинлоком, поэтому мьютекс."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что делает container_of и зачем он повсеместно в ядре? Как драйвер получает свою структуру из inode->i_cdev?",
+          "hint": "По адресу встроенного члена → адрес объемлющей структуры (offsetof); встраивание вместо указателя.",
+          "reference": "container_of(ptr, type, member) = (type*)((char*)ptr - offsetof(type, member)): по адресу ВСТРОЕННОГО члена получает адрес объемлющей структуры. Зачем: ядро строит структуры ВСТРАИВАНИЕМ (struct my_device { struct cdev cdev; ...буфер, лок... }), а VFS даёт указатель на встроенный объект (inode->i_cdev). В open: dev = container_of(inode->i_cdev, struct my_device, cdev); file->private_data = dev; — и в read/write забираешь file->private_data. Так драйвер с МНОГИМИ устройствами (minor 0..N) находит нужный экземпляр без глобалей. Это самодельный полиморфизм ядра; на этом построены все списки (list_head), file_operations, net_device — типобезопасно, без void*."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как кодируется команда ioctl (_IOR/_IOW) и зачем magic? Какой код возврата для неизвестной команды и почему нельзя трогать arg напрямую?",
+          "hint": "magic+номер+направление+размер; -ENOTTY; arg — userspace-указатель → get_user/copy_from_user.",
+          "reference": "Команда ioctl кодируется макросами _IO/_IOR/_IOW/_IOWR(magic, nr, type): в номер зашиты magic (уникальный байт драйвера), номер, НАПРАВЛЕНИЕ (R/W) и РАЗМЕР аргумента. Зачем magic: безопасность — драйвер проверяет _IOC_TYPE(cmd)==MAGIC, отсекая чужие/случайные команды. Неизвестная команда → -ENOTTY (исторически «not a typewriter», стандартный код «неподдерживаемый ioctl»), НЕ -EINVAL. arg — это userspace-адрес: НЕЛЬЗЯ разыменовать напрямую (oops/дыра), только get_user/put_user (скаляр) или copy_from_user/copy_to_user (структура). Поля структуры из userspace ВАЛИДИРУЙ (недоверенный ввод). unlocked_ioctl (не старый .ioctl под BKL) — синхронизацию делаешь сам."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как усыпить процесс до готовности данных (wait queue)? Чем wait_event_interruptible похож на condition variable из C1?",
+          "hint": "DECLARE_WAIT_QUEUE_HEAD; wait_event_interruptible(wq,cond); wake_up; -ERESTARTSYS; O_NONBLOCK.",
+          "reference": "Wait queue — condition variable ядра. read при отсутствии данных: если O_NONBLOCK → -EAGAIN; иначе wait_event_interruptible(read_wq, data_ready) — атомарно проверяет cond, если ложно усыпляет в очереди, просыпается при wake_up И когда cond истинно (ПЕРЕПРОВЕРЯЕТ — нет lost/spurious wakeup, как предикат-цикл condvar в C1/C2). Возврат !=0 = разбужен СИГНАЛОМ → вернуть -ERESTARTSYS (ядро решит: перезапустить сисколл или EINTR, Ф2). Производитель (write/прерывание): установить cond=1 (под локом), потом wake_up_interruptible(&read_wq) — разбудить ждущих. wake_up = notify. Та же producer-consumer модель C1, но ядерными примитивами. Обязательно уважать O_NONBLOCK — иначе неблокирующий epoll-клиент (C2) зависнет."
+        },
+        {
+          "type": "self_grade",
+          "text": "Конкурентность в драйвере: mutex vs spinlock vs atomic — что когда? Почему copy_*_user нельзя под спинлоком?",
+          "hint": "mutex — секция может спать; spinlock — короткая/атомарный контекст, спать нельзя; atomic — счётчик.",
+          "reference": "Ядро SMP+preemptible: драйвер параллелен по умолчанию (read на ядре 0, write на ядре 1 одновременно) — защищай всё разделяемое с первой строки. Mutex — sleepable лок: секция МОЖЕТ спать (наш read/write с copy_*_user, который может заблокироваться на page fault). Spinlock — крутящийся: КОРОТКИЕ секции, в т.ч. атомарный контекст (прерывание); под ним СПАТЬ НЕЛЬЗЯ — ни copy_*_user, ни kmalloc(GFP_KERNEL), ни mutex (иначе «scheduling while atomic», зависание). spin_lock_irqsave если лок берут и из прерывания. atomic_t — простой счётчик/флаг без структуры (open_count), lock-free. Дисциплина: минимизируй секцию, единый порядок локов (C1 §9 против deadlock), lockdep ловит ошибки. copy_*_user под спинлоком запрещён именно потому, что может спать."
+        },
+        {
+          "type": "self_grade",
+          "text": "Память ядра: kmalloc/kzalloc/vmalloc — в чём разница, и когда GFP_KERNEL vs GFP_ATOMIC?",
+          "hint": "kmalloc — физнепрерывный <128К (DMA); vmalloc — большой виртнепрерывный; GFP_KERNEL спит, GFP_ATOMIC нет.",
+          "reference": "Нет malloc — есть ядерные аллокаторы. kmalloc(size,flags) — небольшие (<~128 КБ), ФИЗИЧЕСКИ непрерывные блоки (важно для DMA); kzalloc — то же + обнуление (предпочитай). vmalloc — большие, ВИРТУАЛЬНО непрерывные (физически разрозненные), медленнее, не для DMA. kfree освобождает. GFP-флаги — КАК выделять: GFP_KERNEL — обычная аллокация в process context, МОЖЕТ СПАТЬ (ждать освобождения памяти) — нельзя в атомарном контексте/под спинлоком; GFP_ATOMIC — НЕ спит, для прерывания/под спинлоком (может чаще не хватить памяти). В наших read/write (process context, не под спинлоком) — GFP_KERNEL. Частая ошибка — GFP_KERNEL в прерывании/под спинлоком = «scheduling while atomic». devm_* авто-освобождает при отвязке устройства."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как локализовать, ГДЕ упал драйвер, по oops? Какие инструменты ловят баги драйвера?",
+          "hint": "RIP+Call Trace с [module]; decode_stacktrace/gdb по смещению; KASAN, lockdep, KCSAN, DEBUG_ATOMIC_SLEEP.",
+          "reference": "Oops в dmesg содержит RIP (func+offset в [module] — точное место, например my_read+0x3a [cppchar]) и Call Trace (стек вызовов). Локализация: gdb -batch -ex 'info line *(my_read+0x3a)' module.ko, или scripts/decode_stacktrace.sh. «address: ...0008» = разыменован адрес 8 = NULL+offset поля (часто private_data не назначен/container_of от NULL). Oops — поток убит, ядро может выжить (неконсистентно); паника — ядро встало. Инструменты (в конфиге ядра): KASAN (OOB/UAF памяти, как ASan), kmemleak (утечки kmalloc), lockdep/CONFIG_PROVE_LOCKING (неверный порядок локов, сон под спинлоком), DEBUG_ATOMIC_SLEEP («sleeping function called from invalid context»), KCSAN (гонки данных). Разрабатывай в QEMU (упадёт виртуалка) с этими опциями — они превращают «иногда падает» в чёткий стек."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Рассуждение и проектирование",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как отдать память драйвера в mmap пользователю? Объясни remap_pfn_range и случаи разрозненной памяти/MMIO.",
+          "hint": "remap_pfn_range(vma,addr,pfn,size,prot) для физнепрерывной; .fault для vmalloc; io_remap для MMIO; проверь размер/права.",
+          "reference": ".mmap позволяет userspace отобразить память драйвера и работать с ней напрямую, без read/write (zero-copy, C3/C6). userspace mmap(fd) → VFS зовёт .mmap(file, vma). Для ФИЗИЧЕСКИ НЕПРЕРЫВНОЙ памяти (kmalloc/DMA-буфер): remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot) строит таблицы страниц, отображая физические фреймы (pfn = phys>>PAGE_SHIFT) в VMA процесса. Проверь size ≤ буфера и права (VM_WRITE) — иначе userspace отобразит больше/с лишними правами. Для VMALLOC-памяти (разрозненной) — нельзя одним remap; нужен обработчик .fault в vm_operations_struct: постранично возвращать vmalloc_to_page (+ ленивая подгрузка). Для MMIO (регистры железа) — io_remap_pfn_range + pgprot_noncached (не кэшировать доступ к регистрам, как volatile/readl). Драйверы GPU/DMA так отдают гигабайтные буферы без копий."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как сделать драйвер совместимым с poll/epoll? Что делает poll_wait, что возвращает .poll, и как это связано с C2/C4?",
+          "hint": "poll_wait подписывает на wait queue (не усыпляет), .poll возвращает маску готовности; wake_up будит; signalfd/timerfd так устроены.",
+          "reference": ".poll делает ДВЕ вещи: (1) poll_wait(file, &dev->read_wq, pt) — РЕГИСТРИРУЕТ wait queue устройства в poll-таблице вызывающего (НЕ усыпляет, только подписывает); (2) возвращает МАСКУ готовности (EPOLLIN если есть данные, EPOLLOUT если есть место). Механика: epoll_wait → ядро зовёт твой .poll → poll_wait подписывает процесс на dev->read_wq → если маска 0, epoll_wait усыпляет процесс (он в очереди) → устройство получило данные → ТЫ зовёшь wake_up(&dev->read_wq) → ядро будит подписанных → epoll_wait снова зовёт .poll → видит EPOLLIN → возвращает. Это ОБРАТНАЯ сторона C2/C4: там ты делал epoll_wait и получал EPOLLIN; здесь ты — драйвер, который через poll_wait+wake_up ДЕЛАЕТ fd читаемым. signalfd/timerfd/eventfd устроены ровно так изнутри. .poll и блокирующий .read используют ТЕ ЖЕ wait queue и условие — wake_up будит обоих. Драйвер обязан уважать O_NONBLOCK."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как защитить состояние драйвера при конкурентном доступе нескольких процессов? Выбор примитива, размер секции, per-open vs shared.",
+          "hint": "SMP+preempt → параллелизм; mutex для sleepable секции; минимум секции; per-open в private_data, shared в dev под локом; lockdep.",
+          "reference": "Ядро SMP+preemptible — несколько процессов через разные open() работают ПАРАЛЛЕЛЬНО; даже один read вытесняем. Поэтому: (1) защищай ВСЁ разделяемое устройством состояние (буфер, длина, FIFO head/tail, флаги) с первой строки — мьютексом (наши read/write зовут copy_*_user, который может спать → спинлок нельзя). (2) Минимизируй критическую секцию (C6 §14): лок только вокруг доступа к данным. (3) Различай уровни: SHARED устройством (в struct my_device, под dev->lock) vs PER-OPEN (позиция/режим этого открытия — в file->private_data или *ppos, ядро хранит per-file). Типовой баг — глобальная «позиция записи»: два процесса портят её; решение — *ppos. (4) Единый порядок взятия нескольких локов (C1 §9 против deadlock). (5) atomic_t для простых счётчиков (open_count). (6) Разрабатывай с lockdep (порядок локов, сон под спинлоком) и DEBUG_ATOMIC_SLEEP. Это и есть «корректно с конкурентным доступом» из критерия."
+        },
+        {
+          "type": "self_grade",
+          "text": "Контексты исполнения ядра (process/softirq/hardirq) — что в каждом НЕЛЬЗЯ и почему это важно для драйвера?",
+          "hint": "process context — можно спать; softirq/hardirq/под спинлоком — нельзя; влияет на выбор лока/GFP/copy_user.",
+          "reference": "Код ядра исполняется в контексте, от которого зависит, что МОЖНО: (1) Process context (от имени сисколла — твои read/write/ioctl) — МОЖНО спать: mutex, copy_*_user, kmalloc(GFP_KERNEL), wait_event. Это упрощение char-драйвера. (2) Softirq/tasklet (отложенная работа, сетевой стек) — спать НЕЛЬЗЯ. (3) Hardirq (обработчик прерывания, K3) — спать НЕЛЬЗЯ, только быстрое. (4) Под спинлоком — спать НЕЛЬЗЯ (preemption выключена). Почему важно: в атомарном контексте/под спинлоком запрещены copy_*_user (может спать на page fault), kmalloc(GFP_KERNEL) (может спать — нужен GFP_ATOMIC), mutex (нужен spinlock), msleep (нужен udelay busy-wait). Нарушение = «scheduling while atomic», зависание. DEBUG_ATOMIC_SLEEP это ловит. Знание контекста определяет КАЖДЫЙ выбор примитива в драйвере."
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему ошибка в ядре дороже userspace, и как это меняет дисциплину (откат, проверки, отладка)?",
+          "hint": "Oops/паника vs segfault; нет авто-очистки; отлаживай в QEMU; goto-cleanup, проверка границ, KASAN/lockdep.",
+          "reference": "В userspace ошибка = SIGSEGV (процесс упал, система жива, ОС подчистила ресурсы). В ядре нет защиты MMU между «процессом» и системой: NULL-дереф/выход за буфер/неосвобождённый лок могут подвесить или уронить ВСЮ машину (oops — поток убит, ядро в неконсистентном состоянии; паника — ядро встало). Нет «процесс завершился — ОС подчистит»: module_exit ОБЯЗАН освободить ВСЁ (утечка живёт до перезагрузки). Это меняет дисциплину: (1) goto-cleanup с зеркальным откатом в init (Ф1) — обязателен, не стиль; (2) проверять ВСЕ возвраты (alloc/register могут провалиться) и IS_ERR для указателей-ошибок; (3) границы буферов (выход = порча кучи ядра); (4) отлаживать в QEMU/VM (упадёт виртуалка, не хост); (5) собирать отладочное ядро с KASAN/lockdep/KCSAN/DEBUG_ATOMIC_SLEEP — они превращают «редкий краш под нагрузкой» в детерминированный стек. Цена ошибки — вся система, поэтому UB/проверки из Ф1 здесь критичны."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Реализуй модуль ядра; собирается Kbuild, тест из userspace в QEMU",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-char-dev",
+          "title": "Char device с read/write/ioctl"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-misc-uppercase",
+          "title": "Misc-устройство: uppercase на read"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "03-readonly-info",
+          "title": "Read-only устройство (write → -EACCES)"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "04-open-counter",
+          "title": "Счётчик открытий (open/release + atomic_t)"
+        }
+      ]
+    }
+  }
+}

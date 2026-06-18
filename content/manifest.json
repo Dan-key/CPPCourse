@@ -144,19 +144,31 @@
           "id": "c5",
           "title": "C5. Демоны и сервисы",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/09-C5-daemons-services.md",
+          "quiz": "quizzes/c5.json",
+          "lang": "cpp",
+          "exercises": [
+            {"id": "01-listen-fds",    "title": "Socket activation: разбор переданных дескрипторов (sd_listen_fds)"},
+            {"id": "02-sd-notify",     "title": "Протокол sd_notify (Type=notify)"},
+            {"id": "03-watchdog",      "title": "Watchdog: пейсер WATCHDOG=1"},
+            {"id": "04-drain-tracker", "title": "Graceful drain: учёт in-flight запросов"}
+          ],
+          "status": "ready"
         },
         {
           "id": "c6",
           "title": "C6. Производительность",
           "tag": "частично есть",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/10-C6-performance.md",
+          "quiz": "quizzes/c6.json",
+          "lang": "cpp",
+          "exercises": [
+            {"id": "01-branchless",        "title": "Branchless: убрать непредсказуемые ветви"},
+            {"id": "02-soa-transform",     "title": "SoA vs AoS: data-oriented горячий цикл"},
+            {"id": "03-false-sharing-pad", "title": "False sharing: развести счётчики по кэш-линиям"},
+            {"id": "04-batch-coalesce",    "title": "Syscall batching: коалесцер операций"}
+          ],
+          "status": "ready"
         }
       ]
     },
@@ -168,12 +180,15 @@
           "id": "k1",
           "title": "K1. Драйверы символьных устройств",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
+          "file": "modules/11-K1-char-device-drivers.md",
+          "quiz": "quizzes/k1.json",
           "exercises": [
-            {"id": "01-char-dev", "title": "Char device с read/write/ioctl", "type": "lkm"}
+            {"id": "01-char-dev",      "title": "Char device с read/write/ioctl", "type": "lkm"},
+            {"id": "02-misc-uppercase","title": "Misc-устройство: uppercase на read", "type": "lkm"},
+            {"id": "03-readonly-info", "title": "Read-only устройство (write → -EACCES)", "type": "lkm"},
+            {"id": "04-open-counter",  "title": "Счётчик открытий (open/release + atomic_t)", "type": "lkm"}
           ],
-          "status": "planned"
+          "status": "ready"
         },
         {
           "id": "k2",
