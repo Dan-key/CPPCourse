@@ -194,21 +194,28 @@
           "id": "k2",
           "title": "K2. Синхронизация в ядре",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/12-K2-kernel-synchronization.md",
+          "quiz": "quizzes/k2.json",
+          "exercises": [
+            {"id": "01-atomic-maxtrack",  "title": "atomic_t + lock-free максимум (CAS-цикл)", "type": "lkm"},
+            {"id": "02-spinlock-stack",   "title": "Стек под спинлоком (не спать под локом)", "type": "lkm"},
+            {"id": "03-mutex-blockqueue", "title": "Блокирующая очередь: мьютекс + wait_event", "type": "lkm"},
+            {"id": "04-rcu-config",       "title": "RCU-конфигурация (publish + grace period)", "type": "lkm"},
+            {"id": "05-percpu-counter",   "title": "per-CPU счётчик (масштабируемость)", "type": "lkm"},
+            {"id": "06-seqlock-pair",     "title": "seqlock: согласованный снимок", "type": "lkm"}
+          ],
+          "status": "ready"
         },
         {
           "id": "k3",
           "title": "K3. Прерывания и отложенная работа",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
+          "file": "modules/13-K3-interrupts-deferred-work.md",
+          "quiz": "quizzes/k3.json",
           "exercises": [
             {"id": "01-workqueue", "title": "Обработчик прерывания + workqueue", "type": "lkm"}
           ],
-          "status": "planned"
+          "status": "ready"
         },
         {
           "id": "k4",

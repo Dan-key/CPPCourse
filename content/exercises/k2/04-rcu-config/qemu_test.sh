@@ -30,9 +30,11 @@ i=0
 while [ "$i" -lt 10 ]; do echo "v $i" > /dev/cppcfg; i=$((i+1)); done
 check "v 9"
 
-if dmesg | grep -qiE 'BUG:|Oops|WARNING:|rcu|use-after-free|slab'; then
-    # rcu-стэллы, kfree старой версии раньше времени, и т.п.
-    echo "[FAIL] ядро ругается:"; dmesg | grep -iE 'BUG:|Oops|WARNING:|rcu' | tail -8
+# Ловим РЕАЛЬНЫЕ проблемы, но не загрузочный баннер "rcu:"/"slab" (поэтому не голое
+# 'rcu'): use-after-free (KASAN печатает "BUG: KASAN: use-after-free"), rcu-стэллы
+# ("...stall..."), порча slab/oops/warning.
+if dmesg | grep -qiE 'BUG:|Oops|call trace|WARNING:|use-after-free|stall'; then
+    echo "[FAIL] ядро ругается:"; dmesg | grep -iE 'BUG:|Oops|WARNING:|stall|use-after-free' | tail -8
     rmmod cppmod 2>/dev/null; exit 1
 fi
 

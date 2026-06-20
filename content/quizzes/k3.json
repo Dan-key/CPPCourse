@@ -1,0 +1,205 @@
+{
+  "module": "k3",
+  "title": "K3 — Прерывания и отложенная работа",
+  "levels": {
+    "БАЗА": {
+      "desc": "Термины — отвечать мгновенно",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что такое прерывание (IRQ)?",
+          "options": [
+            "Системный вызов из userspace",
+            "Асинхронный сигнал от устройства процессору («случилось событие, обрати внимание сейчас») — CPU прерывает текущее исполнение и прыгает в обработчик",
+            "Ошибка процессора",
+            "Способ выделить память"
+          ],
+          "answer": 1,
+          "explanation": "Устройство (сеть, диск, клавиатура, таймер) дёргает линию IRQ → процессор прерывает любой исполняемый код и вызывает обработчик через таблицу векторов (IDT на x86). Это асинхронное событие железа — основа того, как устройство сигналит готовность."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое top half и bottom half обработки прерывания?",
+          "options": [
+            "Две половины памяти устройства",
+            "Top half (обработчик IRQ) — быстрый, в атомарном контексте, только подтверждает событие и ПЛАНИРУЕТ работу; bottom half — отложенная обработка позже, в менее жёстком контексте",
+            "Top half для чтения, bottom для записи",
+            "Это синонимы"
+          ],
+          "answer": 1,
+          "explanation": "Обработчик прерывания зажат в атомарный контекст (нельзя спать, нельзя долго). Поэтому драйвер расщепляет обработку: top half (ack + забрать срочное + запланировать BH + выйти быстро), bottom half (тяжёлая/сонная работа позже — softirq/tasklet/workqueue/threaded)."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему в обработчике прерывания (top half) НЕЛЬЗЯ спать?",
+          "options": [
+            "Можно, просто медленно",
+            "Top half бежит в атомарном (interrupt) контексте — нет процесса, чтобы усыпить, и планировщик не может корректно вытеснить → запрещены mutex_lock, copy_*_user, kmalloc(GFP_KERNEL), msleep",
+            "Спать нельзя только в userspace",
+            "Из-за нехватки памяти"
+          ],
+          "answer": 1,
+          "explanation": "Сон = уступить CPU планировщику. Но в interrupt context нет «своего» потока, чтобы отложить и вернуть; прерывание бежит поверх случайного процесса. Спящие вызовы → «scheduling while atomic» → зависание. Сонную работу откладывают в process context (workqueue/threaded IRQ)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что возвращает обработчик прерывания и зачем?",
+          "options": [
+            "void",
+            "int 0/-1",
+            "irqreturn_t: IRQ_HANDLED (моё, обработал), IRQ_NONE (не моё — для shared IRQ, чтобы попробовать следующий обработчик), IRQ_WAKE_THREAD (разбудить threaded-обработчик)",
+            "Число обработанных байт"
+          ],
+          "answer": 2,
+          "explanation": "На общей линии (shared IRQ) ядро зовёт обработчики по очереди, пока кто-то не вернёт IRQ_HANDLED. Если твоё устройство не вызывало прерывание — верни IRQ_NONE. Если все вернут IRQ_NONE много раз — ядро отключит линию («nobody cared»)."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем workqueue отличается от softirq/tasklet по контексту?",
+          "options": [
+            "Ничем",
+            "Workqueue выполняется в PROCESS CONTEXT (поток kworker) — в ней можно СПАТЬ (mutex, copy_*_user, kmalloc(GFP_KERNEL)); softirq/tasklet — атомарный контекст (спать нельзя)",
+            "Workqueue быстрее",
+            "Workqueue только для сети"
+          ],
+          "answer": 1,
+          "explanation": "Это ключевое различие. Workqueue (и threaded IRQ) дают process context → можно копировать в userspace, брать мьютекс, ждать, аллоцировать GFP_KERNEL. Softirq/tasklet атомарны — только быстрая обработка без сна. Поэтому для сонной отложенной работы — workqueue/threaded."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает `cancel_work_sync(&work)` и зачем в exit драйвера?",
+          "options": [
+            "Запускает работу немедленно",
+            "Отменяет запланированную работу И дожидается завершения уже бегущей — гарантирует, что после неё work_fn не выполнится; нужно ПЕРЕД освобождением памяти, иначе kworker дёрнет work после выгрузки → use-after-free/паника",
+            "Удаляет workqueue",
+            "Усыпляет поток"
+          ],
+          "answer": 1,
+          "explanation": "Если выгрузить модуль / kfree буфер, пока работа в очереди, kworker позже выполнит work_fn — а кода/памяти уже нет → паника/UAF. cancel_work_sync блокирующе отменяет+дожидается. Порядок остановки: закрыть источник → cancel_work_sync → освободить."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает `request_irq` и что такое `dev_id`?",
+          "options": [
+            "Запрашивает память; dev_id — её размер",
+            "Регистрирует обработчик прерывания на линию IRQ; dev_id — указатель-cookie, который вернётся в обработчик (обычно struct устройства) и по которому free_irq находит обработчик (нужен для shared IRQ)",
+            "Создаёт устройство; dev_id — его имя",
+            "Открывает файл"
+          ],
+          "answer": 1,
+          "explanation": "request_irq(irq, handler, flags, name, dev_id). dev_id передаётся обратно в handler (чтобы найти своё устройство) и идентифицирует обработчик при free_irq на общей линии. devm_request_irq — managed-вариант (авто-освобождение)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что показывает `/proc/interrupts`?",
+          "options": [
+            "Список процессов",
+            "Счётчики прерываний по линиям и ядрам CPU — растущий счётчик значит, что IRQ приходят и обработчик зовётся; имя справа — из request_irq",
+            "Использование памяти",
+            "Открытые файлы"
+          ],
+          "answer": 1,
+          "explanation": "Первый инструмент отладки прерываний: счётчик растёт → IRQ идут; не растёт → устройство не генерирует/неверный номер/не разрешено. Несколько имён на линии = shared IRQ. По колонкам CPU видно affinity."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Объяснить, как и почему работает",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Объясни разбивку top half / bottom half: что делает каждая половина и зачем расщеплять.",
+          "hint": "Top half — атомарно, быстро, ack+планировать; bottom half — тяжёлое позже; латентность IRQ + контекст.",
+          "reference": "Обработчик прерывания (top half) бежит в атомарном контексте: спать нельзя, и пока он работает, прерывания (минимум это, часто и другие) замаскированы → другие устройства ждут. Поэтому top half должен быть МИНИМАЛЬНЫМ: подтвердить прерывание железу (ack), забрать срочные данные, ЗАПЛАНИРОВАТЬ bottom half (schedule_work/tasklet_schedule/IRQ_WAKE_THREAD), выйти за микросекунды. Bottom half — отложенная работа в менее жёстком контексте (softirq/tasklet — атомарный; workqueue/threaded — process context, можно спать): тяжёлая обработка, copy_*_user, wake_up ждущих. Зачем: (1) короткий top half = низкая латентность прерываний для всей системы; (2) тяжёлая/сонная работа требует process context, которого нет в top half. Top half неизбежен (точка входа от железа), bottom half — куда с него уходят."
+        },
+        {
+          "type": "self_grade",
+          "text": "softirq vs tasklet vs workqueue: контекст каждого, можно ли спать, когда что использовать.",
+          "hint": "softirq — атомарный, фикс. набор, подсистемы; tasklet — атомарный, легаси; workqueue — process context, можно спать.",
+          "reference": "Softirq — низший механизм, ФИКСИРОВАННЫЙ набор (NET_RX, TIMER, BLOCK, TASKLET...), атомарный (спать нельзя), для ПОДСИСТЕМ ядра (сеть/блок/таймеры), драйверы напрямую не регистрируют. Tasklet — динамическая отложенная работа поверх softirq, всё ещё АТОМАРНАЯ (спать нельзя), сериализован сам с собой; ВЫТЕСНЯЕТСЯ (легаси). Workqueue — отложенная работа в PROCESS CONTEXT (поток kworker), можно СПАТЬ (mutex/copy_*_user/kmalloc GFP_KERNEL); рекомендуется. Threaded IRQ — process context через выделенный поток. Выбор: нужно спать/copy_user → process context (workqueue или threaded IRQ); хватает атомарного и нужна минимальная задержка → softirq (только подсистемы) / BH workqueue. Новый драйвер по умолчанию — workqueue или threaded IRQ; tasklet только в чужом легаси."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое threaded IRQ и зачем? Как работает IRQ_WAKE_THREAD и зачем IRQF_ONESHOT?",
+          "hint": "request_threaded_irq: hard-обработчик + поток (process context); IRQ_WAKE_THREAD будит поток; ONESHOT держит линию замаскированной.",
+          "reference": "Threaded IRQ (request_threaded_irq) — ядро делает разбивку top/bottom за тебя: регистрирует БЫСТРЫЙ hard-обработчик (атомарный) и THREADED-обработчик в выделенном потоке ядра (PROCESS CONTEXT — можно спать). Hard-обработчик быстро проверяет/ack'ает и возвращает IRQ_WAKE_THREAD → ядро будит поток → threaded-обработчик делает сонную/тяжёлую работу (copy_user, mutex, kmalloc GFP_KERNEL, wake_up). Если hard-часть не нужна, передай NULL. IRQF_ONESHOT держит линию IRQ ЗАМАСКИРОВАННОЙ от hard-обработчика до завершения threaded — нужно для уровневых прерываний, чтобы не было шторма (линия активна, пока источник не сброшен threaded-обработчиком, который бежит позже). Зачем threaded: проще ручного workqueue (ядро управляет потоком, маской, остановкой через free_irq), один поток на IRQ → естественная сериализация, нет ручного cancel_work_sync. Современный дефолт для «обработать IRQ сонно»."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как из обработчика прерывания разбудить ждущих в read/poll? Как это замыкает круг C2↔K1↔железо?",
+          "hint": "top half/BH: data_ready=1 + wake_up(&wq); read спит в wait_event, poll подписан через poll_wait; одна wait queue.",
+          "reference": "Устройство получило данные → IRQ → top half (или bottom half) забирает данные в буфер ядра, отмечает готовность (data_ready=1) и зовёт wake_up_interruptible(&dev->read_wq) — это НЕ спит, можно из top half. Та же wait queue обслуживает ОБА способа ожидания: процесс в блокирующем read (wait_event_interruptible(wq, data_ready), K1 §11) просыпается и читает; процесс в epoll/poll (подписан через poll_wait в .poll, K1 §12) → .poll возвращает EPOLLIN. Один wake_up будит всех. Это замыкает круг: userspace в epoll_wait (C2) ← .poll/wait queue (K1) ← wake_up из обработчика (K3) ← прерывание устройства (железо). signalfd/timerfd/eventfd (C4) устроены ровно так изнутри: событие → wake_up wait queue → .poll → EPOLLIN. Драйвер устройства — обобщение всех fd-источников."
+        },
+        {
+          "type": "self_grade",
+          "text": "Чем delayed_work отличается от обычной work? Почему колбэк timer_list атомарный?",
+          "hint": "delayed_work = work + таймер (через задержку); timer колбэк в softirq (TIMER_SOFTIRQ) — атомарный.",
+          "reference": "Обычная work (schedule_work) ставится в очередь и выполняется «как можно скорее» в kworker. delayed_work (schedule_delayed_work(&dw, delay)) = work_struct + таймер: таймер истекает через delay → работа ставится в очередь → work_fn бежит в process context (можно спать). То есть delayed_work выполняется С ЗАДЕРЖКОЙ, а не сразу — для опроса через время, таймаутов, повторов; для периодики work_fn перепланирует себя. Отмена — cancel_delayed_work_sync. Колбэк timer_list (низкоуровневого таймера) бежит в SOFTIRQ context (TIMER_SOFTIRQ) — АТОМАРНЫЙ, спать НЕЛЬЗЯ (как top half). Поэтому: нужно спать по таймеру → delayed_work (process context); короткое атомарное действие/источник, который schedule_work откладывает → timer_list. hrtimer — наносекундная точность, колбэк тоже атомарный (на тех же hrtimer, что timerfd из C4)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему `spin_lock_irqsave`, а не `spin_lock`, при дележе данных с обработчиком прерывания?",
+          "hint": "Обычный спинлок: прерывание на том же ядре схватится за тот же лок → deadlock; irqsave запрещает локальные IRQ.",
+          "reference": "Если read (process context) взял spin_lock, и в этот момент НА ТОМ ЖЕ ЯДРЕ срабатывает прерывание, чей обработчик пытается взять ТОТ ЖЕ спинлок → DEADLOCK: обработчик крутится, ожидая лок, который держит прерванный read, а read не может продолжиться (его прервали). spin_lock_irqsave(&lock, flags) берёт лок И запрещает локальные прерывания на время секции → обработчик не сработает на этом ядре и не схватится за лок. flags сохраняет прежнее состояние IRQ (irqrestore восстанавливает, а не «включает безусловно»). В самом обработчике — обычный spin_lock (прерывания уже запрещены на входе в hard IRQ). Правила: данные только в process context → mutex; process + обработчик IRQ → spin_lock_irqsave; process + softirq → spin_lock_bh. Под спинлоком не спать (copy_user — вне лока)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему tasklet постепенно вытесняют? Чем его заменяют?",
+          "hint": "Атомарный контекст, латентность/конкуренция с softirq, нет ниши; threaded IRQ / workqueue / BH workqueue.",
+          "reference": "Tasklet стоит на TASKLET_SOFTIRQ → АТОМАРНЫЙ (спать нельзя): тяжёлую/сонную работу всё равно надо тащить дальше в workqueue → лишний слой. Конкурирует с критичными softirq (сеть/таймеры) → плохо предсказуемая латентность. Community признал его исторической ошибкой: для атомарной отложенной работы хуже softirq, для сонной — хуже workqueue, своей ниши нет. Замены: «сонная работа в ответ на IRQ» → THREADED IRQ (ядро само заводит поток, process context); общая отложенная работа → WORKQUEUE; редкая «отложить атомарно и дёшево» (бывшая ниша tasklet) → BH WORKQUEUE (system_bh_wq, 6.9+ — тот же workqueue-API, но softirq context). На PREEMPT_RT threaded IRQ становится нормой. Вывод: в новом коде tasklet не использовать; знать для чтения легаси."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как отлаживать прерывания: какие инструменты и что они показывают?",
+          "hint": "/proc/interrupts (идут ли IRQ), nobody cared, DEBUG_ATOMIC_SLEEP/lockdep (сон в атомарном), ftrace irq:*.",
+          "reference": "/proc/interrupts — счётчики по линиям/CPU: растёт → IRQ приходят и обработчик зовётся; не растёт → устройство не генерирует/неверный номер/не разрешено. /proc/softirqs — счётчики softirq (NET_RX, TIMER, TASKLET). «irq N: nobody cared» в dmesg — все обработчики вернули IRQ_NONE (не распознали/не ack'нули своё прерывание) → ядро отключило линию (баг shared-проверки/ack). DEBUG_ATOMIC_SLEEP — ловит сон в атомарном контексте («BUG: scheduling while atomic» / «sleeping function called from invalid context») со стеком — например mutex_lock/copy_user в top half. lockdep — неверный порядок локов, отсутствие spin_lock_irqsave. ftrace events irq:irq_handler_entry/exit, workqueue:* — длительность обработчиков/работы (не слишком ли долго top half). bcc hardirqs/funclatency — гистограммы латентности. Всё — в QEMU (зависание не уронит хост), на ядре с KASAN+lockdep+DEBUG_ATOMIC_SLEEP."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Рассуждение и проектирование",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как синхронизировать отложенную работу с остановкой драйвера? Опиши порядок и гонку самоперепланирования.",
+          "hint": "Закрыть источник → cancel_work_sync/timer_delete_sync → kfree; флаг stopping для самоперепланирующейся.",
+          "reference": "Опасность: top half запланировал work/timer, модуль выгружают/устройство отвязывают, а отложенная работа ещё в очереди → kworker позже дёрнет work_fn, которой уже нет (код выгружен), или тронет освобождённый буфер → use-after-free/паника (KASAN это ловит). Правильный порядок («закрыть кран → добить полёт → освободить»): (1) прекратить ИСТОЧНИК — выключить прерывания устройства, free_irq (он дожидается бегущего top half), misc_deregister (новых событий не будет); (2) cancel_work_sync(&work) / cancel_delayed_work_sync(&dw) / timer_delete_sync(&t) — блокирующе отменяют+дожидаются: после них отложенная функция гарантированно не выполнится; (3) только теперь kfree. Перепутаешь (kfree до cancel) — UAF. Тонкость самоперепланирования: если work_fn/timer_fn ПЕРЕПЛАНИРУЕТ себя (периодика), cancel_*_sync может не помочь (работа снова встанет после отмены) — нужен флаг stopping (под локом/READ_ONCE), который work_fn проверяет и НЕ перепланирует, выставить его ДО cancel_*_sync. flush_work лишь дожидается (не отменяет будущие) — для остановки нужен именно cancel_work_sync."
+        },
+        {
+          "type": "self_grade",
+          "text": "Threaded IRQ vs workqueue: когда что и почему оба дают process context? Когда ни тот, ни другой?",
+          "hint": "Threaded — один источник-IRQ, сонная обработка; workqueue — общая/отложенная/многоисточниковая; оба process ctx; softirq для сверхтемпа.",
+          "reference": "Оба выполняют код в PROCESS CONTEXT (threaded — выделенный поток на IRQ; workqueue — пул kworker) → можно спать, copy_user, mutex, kmalloc(GFP_KERNEL). Threaded IRQ — когда сонная работа есть ПРЯМОЕ продолжение ОДНОГО прерывания: ядро управляет потоком, маской (IRQF_ONESHOT), остановкой (free_irq дожидается) → меньше кода, чем ручной workqueue, один поток → сериализация. Workqueue — когда работа ОБЩАЯ (несколько источников: IRQ + таймер + write шлют в одну очередь), нужна ЗАДЕРЖКА (delayed_work), гибкий контроль очереди/параллелизма/приоритета. Ни тот, ни другой: при СВЕРХВЫСОКОМ темпе (сеть/блок) поток на прерывание дорог → softirq + опрос (NAPI); при ТРИВИАЛЬНОЙ атомарной обработке (положить байт + wake_up) всё влезает в hard-обработчик, BH лишний. Дефолт прикладного драйвера — process context (threaded для сонного IRQ, workqueue для общей отложенной)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Нарисуй полный путь готовности: устройство → top half → bottom half → wake_up → epoll-клиент. Где что бежит.",
+          "hint": "IRQ→top half (атомарно: ack, забрать, schedule_work)→bottom half (process: обработать, wake_up)→.poll EPOLLIN→epoll_wait userspace→read.",
+          "reference": "(1) Устройство получило данные → дёрнуло линию IRQ. (2) CPU прыгает в TOP HALF (атомарный контекст): прочитать статус → наше? (иначе IRQ_NONE) → ack (сбросить источник) → забрать срочные данные в буфер ядра под spin_lock → schedule_work(&work) (отложить тяжёлое) → IRQ_HANDLED, выйти за мкс. (3) Позже BOTTOM HALF — work_fn в kworker (PROCESS CONTEXT): разобрать/преобразовать данные (можно спать, mutex, copy), отметить готовность (data_ready=1 под локом), wake_up_interruptible(&dev->read_wq). (4) wake_up будит подписанных: процесс в epoll_wait (он через poll_wait подписан на dev->read_wq) → ядро снова зовёт .poll → теперь data_ready → возвращает EPOLLIN. (5) epoll_wait в userspace (C2) вернул событие → клиент делает read(fd) → твой .read под локом отдаёт данные через copy_to_user (вне спинлока). Контексты: top half атомарный (быстро), bottom half process (тяжёлое+wake_up), read/epoll process. Это полный круг C2 (epoll) ↔ C4 (fd-источник) ↔ K1 (.poll/wait queue) ↔ K3 (wake_up из IRQ) ↔ железо."
+        },
+        {
+          "type": "self_grade",
+          "text": "Конкурентность IRQ ↔ process context: какой примитив выбрать и как минимизировать атомарную секцию.",
+          "hint": "process+IRQ → spin_lock_irqsave; copy_user вне лока; wait_event до лока; per-CPU → local_irq_save; короткая секция.",
+          "reference": "Состояние, общее у обработчика IRQ и read/write (process), требует: в process-части — spin_lock_irqsave (спинлок + запрет локальных IRQ, иначе прерывание на том же ядре схватится за тот же лок → deadlock); в обработчике — обычный spin_lock (IRQ уже запрещены). Если данные per-CPU (нет межъядерной гонки, только своё прерывание) — дешевле local_irq_save (без лока). Делишь с softirq/tasklet, не hard-IRQ → spin_lock_bh. Минимизация атомарной секции (запрет IRQ бьёт по латентности ВСЕЙ системы): (1) под спинлоком — только забрать данные в локальный буфер, БЕЗ copy_*_user (сон под спинлоком запрещён); copy_to_user — ПОСЛЕ отпускания лока; (2) wait_event — ДО взятия лока (он сам спит); (3) держать irqsave-лок микросекунды. Без лока (флаг+буфер) — барьеры smp_store_release/smp_load_acquire (модель памяти C1, ядерные примитивы); READ_ONCE/WRITE_ONCE для одиночных флагов. На PREEMPT_RT обычные спинлоки сонные, hard-IRQ threaded — ещё причина выносить работу в threaded IRQ."
+        },
+        {
+          "type": "self_grade",
+          "text": "Спроектируй приём данных от устройства, где одно прерывание может нести пачку, а work не дублируется. Как не терять данные?",
+          "hint": "schedule_work не дублирует → копи данные в очередь под локом, work дренирует ВСЁ накопленное.",
+          "reference": "Проблема: schedule_work на уже запланированную работу — no-op (не дублирует), поэтому N прерываний могут дать ОДНО выполнение work_fn. Если каждое событие несёт данные, нельзя полагаться «одна работа = одно событие» — потеряешь данные при коалесцинге. Решение (как дренаж в C2, агрегация eventfd в C3/C4): top half КОПИТ данные в очередь под локом (list_add_tail в list_head, K1 §9.3, под spin_lock) и schedule_work (пачка или одно — неважно). work_fn (process context) ДРЕНИРУЕТ ВСЁ накопленное: цикл «взять элемент из очереди под локом → если пусто, выйти → обработать (можно спать) → kfree», пока очередь не пуста. Так данные в очереди (не теряются при коалесцинге work), а work лишь сигнал «есть что обработать». Защита очереди — spin_lock (берётся и из top half: spin_lock в обработчике, spin_lock_irqsave в process-части, если бы read тоже её трогал). Это разрывает зависимость «schedule_work = событие»: один пинок, данных — сколько накопилось. cancel_work_sync при остановке + опустошить очередь."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Реализуй модуль ядра; собирается Kbuild, тест из userspace в QEMU",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-workqueue",
+          "title": "Обработчик прерывания + workqueue"
+        }
+      ]
+    }
+  }
+}
