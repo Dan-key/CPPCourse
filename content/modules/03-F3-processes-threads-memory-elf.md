@@ -619,7 +619,7 @@ mincore(addr, len, vec);
 
 **Для малых аллокаций (< M_MMAP_THRESHOLD, обычно 128 KiB):**
 - Ядро heap (sbrk/brk расширяет BSS вверх)
-- Внутри — bins: fastbins (8..80 байт), smallbins, largebins
+- Внутри — bins: fastbins (на 64-bit — чанки 16..128 байт, кратные 16; потолок `global_max_fast`), smallbins, largebins
 - Каждый поток имеет арену (arena) для уменьшения contention между потоками
 - `free()` возвращает в bin, объединяет соседние свободные чанки (coalescing)
 - В ОС память обычно **не возвращается** — heap может только расти через `brk()`
@@ -850,6 +850,7 @@ POSIX thread = Linux task с флагами `CLONE_VM | CLONE_FILES | CLONE_FS |
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>   /* strerror() */
 
 /* Тип функции потока: принимает void*, возвращает void* */
 void *worker(void *arg)
@@ -1026,6 +1027,8 @@ void *consumer(void *arg)
 }
 ```
 
+> **Важная оговорка к примеру выше.** Здесь и producer, и consumer ждут на **одном** condvar, но разных условий («есть место» / «есть элемент»), и используют `pthread_cond_signal`. Это корректно **только для схемы один producer + один consumer**. При нескольких producer'ах и/или consumer'ах `signal` может разбудить «не того» (например, второго producer'а вместо ожидающего consumer'а) → потерянное пробуждение → deadlock. Общий случай решается **двумя** отдельными condvar (`not_full` и `not_empty`) — как в задаче про пул потоков ниже (§МЕХАНИЗМЫ-2) — либо заменой `signal` на `broadcast`.
+
 **`pthread_cond_signal()` vs `pthread_cond_broadcast()`:**
 - `signal`: разбудить **один** ждущий поток (какой именно — не определено)
 - `broadcast`: разбудить **все** ждущие потоки
@@ -1086,7 +1089,9 @@ if (data == NULL) {
 #include <stdatomic.h>
 
 /* Типы: atomic_int, atomic_long, atomic_size_t, atomic_uintptr_t, ... */
-atomic_int counter = ATOMIC_VAR_INIT(0);
+atomic_int counter = 0;   /* ATOMIC_VAR_INIT устарел в C17 и удалён в C23 —
+                             современные компиляторы (gnu23 по умолчанию) его не знают;
+                             просто инициализируй значением */
 
 /* Чтение и запись: */
 int val = atomic_load(&counter);
@@ -1120,7 +1125,7 @@ do {
 
 ```c
 /* Явная передача данных: acquire/release семантика */
-atomic_int flag = ATOMIC_VAR_INIT(0);
+atomic_int flag = 0;
 int data = 0;
 
 /* Поток 1 (публикатор): */

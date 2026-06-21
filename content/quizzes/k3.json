@@ -198,6 +198,21 @@
           "type": "exercise",
           "exercise_id": "01-workqueue",
           "title": "Обработчик прерывания + workqueue"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-delayed-work",
+          "title": "delayed_work — отложить на время"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "03-timer-source",
+          "title": "Таймер-источник → workqueue (атомарный → process)"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "04-blocking-wakeup",
+          "title": "Разбудить блокирующий read из bottom half (+poll)"
         }
       ]
     }

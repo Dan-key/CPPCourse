@@ -213,7 +213,10 @@
           "file": "modules/13-K3-interrupts-deferred-work.md",
           "quiz": "quizzes/k3.json",
           "exercises": [
-            {"id": "01-workqueue", "title": "Обработчик прерывания + workqueue", "type": "lkm"}
+            {"id": "01-workqueue",      "title": "Обработчик прерывания + workqueue", "type": "lkm"},
+            {"id": "02-delayed-work",   "title": "delayed_work — отложить на время", "type": "lkm"},
+            {"id": "03-timer-source",   "title": "Таймер-источник → workqueue (атомарный → process)", "type": "lkm"},
+            {"id": "04-blocking-wakeup","title": "Разбудить блокирующий read из bottom half (+poll)", "type": "lkm"}
           ],
           "status": "ready"
         },

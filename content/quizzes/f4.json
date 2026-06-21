@@ -193,7 +193,10 @@
     },
     "ЗАДАНИЯ": {
       "desc": "Задания требуют запуска GDB, strace, perf на реальных программах и не могут быть автоматически проверены через компиляцию",
-      "questions": []
+      "questions": [
+        { "type": "exercise", "exercise_id": "01-asan-hunt", "title": "ASan-охота: heap-overflow, OOB, use-after-free" },
+        { "type": "exercise", "exercise_id": "02-gdb-logic", "title": "GDB: отладка логических ошибок без краша" }
+      ]
     }
   }
 }
