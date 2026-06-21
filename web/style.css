@@ -865,6 +865,23 @@ html, body {
   tab-size: 4;
 }
 
+/* CodeMirror (редактор кода с подсветкой). Высота — по содержимому
+   (viewportMargin: Infinity), страница скроллится как раньше. */
+.code-editor-host .CodeMirror {
+  height: auto;
+  min-height: 220px;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--code-bg);
+  color: #e3e6ed;
+}
+.code-editor-host .CodeMirror-scroll { min-height: 220px; }
+.code-editor-host .CodeMirror-gutters {
+  background: var(--code-bg);
+  border-right: 1px solid var(--border);
+}
+
 .editor-btnrow {
   display: flex;
   gap: 8px;

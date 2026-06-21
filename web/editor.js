@@ -131,12 +131,46 @@ async function openExercise(moduleId, ex, detail, prog, itemEl) {
     ${isDone ? '<span class="editor-done-badge">✓ Пройдено</span>' : ''}`;
   editorWrap.appendChild(editorLabel);
 
-  const textarea = document.createElement("textarea");
-  textarea.className = "code-editor";
-  textarea.spellcheck = false;
-  textarea.value = starterCode;
-  textarea.rows  = Math.max(20, starterCode.split("\n").length + 2);
-  editorWrap.appendChild(textarea);
+  /* Редактор: CodeMirror (подсветка C/C++, номера строк, отступы).
+     Если CDN не загрузился — откат на обычный <textarea>, чтобы редактор работал. */
+  const host = document.createElement("div");
+  host.className = "code-editor-host";
+  editorWrap.appendChild(host);
+
+  let cm = null, textarea = null;
+
+  if (window.CodeMirror) {
+    cm = CodeMirror(host, {
+      value: starterCode,
+      mode: srcName.endsWith(".cpp") ? "text/x-c++src" : "text/x-csrc",
+      theme: "material-darker",
+      lineNumbers: true,
+      indentUnit: 4,
+      tabSize: 4,
+      indentWithTabs: false,
+      lineWrapping: false,
+      viewportMargin: Infinity,           // высота по содержимому (как раньше rows)
+      extraKeys: { Tab: (c) => c.replaceSelection("    ") },  // Tab → 4 пробела
+    });
+  } else {
+    textarea = document.createElement("textarea");
+    textarea.className = "code-editor";
+    textarea.spellcheck = false;
+    textarea.value = starterCode;
+    textarea.rows  = Math.max(20, starterCode.split("\n").length + 2);
+    host.appendChild(textarea);
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const s = textarea.selectionStart, end = textarea.selectionEnd;
+        textarea.value = textarea.value.substring(0, s) + "    " + textarea.value.substring(end);
+        textarea.selectionStart = textarea.selectionEnd = s + 4;
+      }
+    });
+  }
+
+  const getCode = () => cm ? cm.getValue() : textarea.value;
+  const setCode = (v) => cm ? cm.setValue(v) : (textarea.value = v);
 
   /* Кнопки */
   const btnRow = document.createElement("div");
@@ -168,17 +202,18 @@ async function openExercise(moduleId, ex, detail, prog, itemEl) {
 
   editorWrap.appendChild(outputWrap);
   detail.appendChild(editorWrap);
+  if (cm) setTimeout(() => cm.refresh(), 0);   // дорисовать после вставки в DOM
 
   /* Обработчики */
   resetBtn.addEventListener("click", () => {
     if (confirm("Сбросить код к стартовой заготовке?")) {
-      textarea.value = starterCode;
+      setCode(starterCode);
       outputWrap.classList.add("hidden");
     }
   });
 
   runBtn.addEventListener("click", async () => {
-    const code = textarea.value;
+    const code = getCode();
     runBtn.disabled = true;
     runBtn.textContent = "…Компиляция…";
     outputWrap.classList.remove("hidden");
@@ -207,16 +242,6 @@ async function openExercise(moduleId, ex, detail, prog, itemEl) {
 
     runBtn.disabled = false;
     runBtn.textContent = ex.type === "lkm" ? "⚙ Собрать и запустить в QEMU" : "▶ Скомпилировать и запустить";
-  });
-
-  /* Tab в textarea */
-  textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const s = textarea.selectionStart, end = textarea.selectionEnd;
-      textarea.value = textarea.value.substring(0, s) + "    " + textarea.value.substring(end);
-      textarea.selectionStart = textarea.selectionEnd = s + 4;
-    }
   });
 }
 
