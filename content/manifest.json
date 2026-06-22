@@ -224,12 +224,15 @@
           "id": "k4",
           "title": "K4. Память ядра",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
+          "file": "modules/14-K4-kernel-memory.md",
+          "quiz": "quizzes/k4.json",
           "exercises": [
-            {"id": "01-slab-cache", "title": "Slab-кэш + kmemleak", "type": "lkm"}
+            {"id": "01-slab-cache",      "title": "Slab-кэш под объекты драйвера + kmemleak", "type": "lkm"},
+            {"id": "02-kvmalloc-buffer", "title": "kvmalloc — буфер с размером из userspace", "type": "lkm"},
+            {"id": "03-page-alloc",      "title": "Страница напрямую у buddy (__get_free_pages)", "type": "lkm"},
+            {"id": "04-percpu-alloc",    "title": "Динамический per-CPU счётчик (alloc_percpu)", "type": "lkm"}
           ],
-          "status": "planned"
+          "status": "ready"
         },
         {
           "id": "k5",
