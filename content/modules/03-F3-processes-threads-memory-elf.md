@@ -489,6 +489,35 @@ int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options);
 
 `waitid()` заполняет `siginfo_t` с детальной информацией: `si_pid`, `si_uid`, `si_status`, `si_code` (`CLD_EXITED`, `CLD_KILLED`, `CLD_DUMPED`, `CLD_STOPPED`, `CLD_CONTINUED`). Более богатый интерфейс чем `waitpid()`.
 
+Главное отличие в **вызове**: вместо «магического» числа в первом аргументе `waitid` разводит «кого ждать» на два явных параметра — `idtype` (**что** означает `id`) и сам `id`, — а **что именно считать событием**, ты задаёшь флагами в `options` (в отличие от `waitpid`, где «завершение» подразумевается). Поэтому **`WEXITED` обязателен** — без него `waitid` не заберёт завершившегося потомка:
+
+```c
+#include <sys/wait.h>
+
+siginfo_t info = {0};            // обнулить: при отсутствии потомков si_pid останется 0
+
+// idtype:  P_PID → ждать id;  P_PGID → группу id;  P_ALL → любого (id игнорируется)
+// options: WEXITED ОБЯЗАТЕЛЕН для завершений; |WSTOPPED|WCONTINUED|WNOHANG — по желанию
+if (waitid(P_ALL, 0, &info, WEXITED) == -1) {
+    perror("waitid");
+} else {
+    printf("PID %d, ", info.si_pid);
+    switch (info.si_code) {                       // КАК умер — прямо в si_code,
+        case CLD_EXITED:                          // не нужны макросы WIF*
+            printf("exited, code=%d\n", info.si_status);   // здесь si_status = код выхода
+            break;
+        case CLD_KILLED:
+            printf("killed by signal %d\n", info.si_status); // здесь si_status = номер сигнала
+            break;
+        case CLD_DUMPED:
+            printf("killed by signal %d (core dumped)\n", info.si_status);
+            break;
+    }
+}
+```
+
+Обрати внимание: `si_status` — **полиморфен**, его смысл (код выхода или номер сигнала) задаётся `si_code`. Это и есть выигрыш `waitid` над `waitpid`: `CLD_DUMPED` отличается от `CLD_KILLED` напрямую (а в `waitpid` пришлось бы городить `WIFSIGNALED` + `WCOREDUMP`), и через `WNOWAIT` в `options` можно **подсмотреть** статус, **не** забирая зомби (запись останется для следующего `wait`).
+
 ---
 
 ## 5. Виртуальная память Linux
