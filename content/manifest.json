@@ -238,12 +238,15 @@
           "id": "k5",
           "title": "K5. VFS и псевдо-ФС",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
+          "file": "modules/15-K5-vfs-pseudofs.md",
+          "quiz": "quizzes/k5.json",
           "exercises": [
-            {"id": "01-debugfs", "title": "debugfs-интерфейс к драйверу", "type": "lkm"}
+            {"id": "01-debugfs",    "title": "debugfs-интерфейс к драйверу", "type": "lkm"},
+            {"id": "02-procfs",     "title": "Коллекция в /proc через seq_file", "type": "lkm"},
+            {"id": "03-sysfs",      "title": "Атрибут устройства в sysfs", "type": "lkm"},
+            {"id": "04-ramfs-mini", "title": "Простейшая in-memory ФС", "type": "lkm"}
           ],
-          "status": "planned"
+          "status": "ready"
         },
         {
           "id": "k6",
