@@ -255,7 +255,10 @@
           "file": "modules/16-K6-netfilter-network-stack.md",
           "quiz": "quizzes/k6.json",
           "exercises": [
-            {"id": "01-nf-hook", "title": "netfilter-модуль с drop по критерию", "type": "lkm"}
+            {"id": "01-nf-drop", "title": "netfilter-модуль: дроп ICMP-пакетов с логом", "type": "lkm"},
+            {"id": "02-nf-port-filter", "title": "netfilter-модуль: блокировка по порту назначения", "type": "lkm"},
+            {"id": "03-nf-log-stats", "title": "netfilter-модуль: счётчик пакетов по протоколу с procfs", "type": "lkm"},
+            {"id": "04-nf-modify-ttl", "title": "netfilter-модуль: модификация TTL и пересчёт чексуммы", "type": "lkm"}
           ],
           "status": "ready"
         },
