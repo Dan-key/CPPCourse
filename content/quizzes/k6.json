@@ -1,0 +1,268 @@
+{
+  "module": "k6",
+  "title": "K6 — netfilter и сетевой стек ядра",
+  "levels": {
+    "БАЗА": {
+      "desc": "Терминология и базовые понятия netfilter, сетевого стека ядра Linux и связанных подсистем",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Что такое netfilter в ядре Linux?",
+          "options": [
+            "Userspace-утилита для настройки файрвола",
+            "Фреймворк хуков в ядре для перехвата и обработки сетевых пакетов",
+            "Драйвер сетевой карты для фильтрации трафика",
+            "Модуль шифрования сетевого трафика"
+          ],
+          "answer": 1,
+          "explanation": "netfilter — это фреймворк внутри ядра Linux, предоставляющий набор хуков (hook points) в сетевом стеке, через которые модули ядра могут перехватывать, анализировать и модифицировать сетевые пакеты. iptables/nftables — это userspace-утилиты, которые взаимодействуют с netfilter."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое хук (hook) в контексте netfilter?",
+          "options": [
+            "Системный вызов для отправки пакета",
+            "Точка в сетевом стеке ядра, в которой можно зарегистрировать callback-функцию для обработки пакетов",
+            "Аппаратное прерывание от сетевой карты",
+            "Запись в таблице маршрутизации"
+          ],
+          "answer": 1,
+          "explanation": "Hook — это определённая точка в пути обработки пакета в сетевом стеке ядра, где netfilter вызывает зарегистрированные callback-функции. Каждый хук соответствует определённому этапу обработки пакета (до маршрутизации, после маршрутизации и т.д.)."
+        },
+        {
+          "type": "mcq",
+          "text": "Сколько стандартных точек хуков определено для IPv4 в netfilter?",
+          "options": [
+            "3: INPUT, OUTPUT, FORWARD",
+            "4: PREROUTING, INPUT, OUTPUT, POSTROUTING",
+            "5: NF_INET_PRE_ROUTING, NF_INET_LOCAL_IN, NF_INET_FORWARD, NF_INET_LOCAL_OUT, NF_INET_POST_ROUTING",
+            "6: PREROUTING, INPUT, FORWARD, OUTPUT, POSTROUTING, INGRESS"
+          ],
+          "answer": 2,
+          "explanation": "В IPv4 netfilter определено 5 стандартных хуков: NF_INET_PRE_ROUTING (до маршрутизации), NF_INET_LOCAL_IN (входящие для локальной машины), NF_INET_FORWARD (транзитные), NF_INET_LOCAL_OUT (исходящие от локальной машины), NF_INET_POST_ROUTING (после маршрутизации). INGRESS — это отдельный хук nftables, не входящий в классические 5."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое verdict в контексте netfilter hook callback?",
+          "options": [
+            "IP-адрес назначения пакета",
+            "Возвращаемое значение callback-функции хука, определяющее дальнейшую судьбу пакета",
+            "Приоритет хука в цепочке обработки",
+            "Контрольная сумма пакета"
+          ],
+          "answer": 1,
+          "explanation": "Verdict — это значение, возвращаемое callback-функцией хука netfilter, которое определяет, что произойдёт с пакетом далее: принять (NF_ACCEPT), отбросить (NF_DROP), украсть (NF_STOLEN) и т.д. Определено в <linux/netfilter.h>."
+        },
+        {
+          "type": "mcq",
+          "text": "Что представляет собой структура sk_buff (skb)?",
+          "options": [
+            "Буфер для хранения данных сокета в userspace",
+            "Основная структура ядра для представления сетевого пакета и его метаданных",
+            "Кольцевой буфер DMA сетевой карты",
+            "Структура для описания сетевого интерфейса"
+          ],
+          "answer": 1,
+          "explanation": "sk_buff (struct sk_buff) — это основная структура данных в сетевом стеке ядра Linux для представления сетевого пакета. Она содержит как сами данные пакета, так и обширные метаданные: указатели на заголовки различных уровней, информацию о маршрутизации, временные метки и пр. Определена в <linux/skbuff.h>."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем отличаются вердикты NF_DROP и NF_ACCEPT?",
+          "options": [
+            "NF_DROP отправляет ICMP-ошибку отправителю, NF_ACCEPT пропускает пакет молча",
+            "NF_DROP уничтожает пакет (kfree_skb), NF_ACCEPT пропускает пакет дальше по стеку",
+            "NF_DROP помещает пакет в очередь, NF_ACCEPT логирует пакет",
+            "Оба пропускают пакет, но NF_DROP снижает его приоритет"
+          ],
+          "answer": 1,
+          "explanation": "NF_DROP приводит к уничтожению пакета — ядро вызывает kfree_skb() для освобождения sk_buff. NF_ACCEPT пропускает пакет дальше по цепочке хуков и далее по сетевому стеку. NF_DROP сам по себе не отправляет ICMP-ошибку — для этого нужен отдельный механизм (NF_DROP с кодом REJECT в nftables)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое conntrack (connection tracking) в netfilter?",
+          "options": [
+            "Механизм шифрования соединений в ядре",
+            "Подсистема netfilter, отслеживающая состояние сетевых соединений (stateful firewall)",
+            "Таблица открытых TCP-сокетов",
+            "Утилита командной строки для мониторинга соединений"
+          ],
+          "answer": 1,
+          "explanation": "conntrack (nf_conntrack) — это подсистема netfilter для отслеживания состояния сетевых соединений. Она позволяет ядру помнить, к какому соединению относится каждый пакет, что необходимо для stateful firewall, NAT и других функций. Состояния: NEW, ESTABLISHED, RELATED, INVALID и др."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое XDP (eXpress Data Path)?",
+          "options": [
+            "Протокол передачи данных уровня L2",
+            "Механизм обработки пакетов на уровне драйвера NIC до выделения sk_buff, использующий eBPF",
+            "Расширение протокола TCP для высокоскоростных сетей",
+            "Интерфейс для прямого доступа приложений к сетевой карте"
+          ],
+          "answer": 1,
+          "explanation": "XDP (eXpress Data Path) — это высокопроизводительный механизм обработки пакетов, работающий на самом раннем этапе — на уровне драйвера сетевой карты, ещё до выделения sk_buff. XDP-программы пишутся на eBPF и могут принимать решения: XDP_DROP, XDP_PASS, XDP_TX, XDP_REDIRECT."
+        },
+        {
+          "type": "mcq",
+          "text": "Чем nftables отличается от iptables на уровне архитектуры?",
+          "options": [
+            "nftables работает целиком в userspace, а iptables — в ядре",
+            "nftables использует pseudo-VM в ядре для выполнения правил, а iptables использует фиксированные match/target модули",
+            "nftables поддерживает только IPv6, а iptables — только IPv4",
+            "nftables не использует netfilter, а работает через eBPF"
+          ],
+          "answer": 1,
+          "explanation": "Ключевое архитектурное отличие: nftables использует виртуальную машину (nf_tables pseudo-VM) в ядре, которая интерпретирует байт-код правил, что обеспечивает гибкость и унификацию. iptables использует фиксированный набор match- и target-модулей ядра (xt_match, xt_target). Оба работают поверх netfilter."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое NAPI (New API) в сетевом стеке Linux?",
+          "options": [
+            "API для написания userspace-сетевых приложений",
+            "Механизм, комбинирующий прерывания и polling для эффективной обработки пакетов на высокой нагрузке",
+            "Новый формат заголовков сетевых пакетов",
+            "Модуль ядра для управления сетевыми интерфейсами"
+          ],
+          "answer": 1,
+          "explanation": "NAPI (New API) — это механизм в сетевом стеке Linux, который при низкой нагрузке использует прерывания от NIC, а при высокой нагрузке переключается на polling (опрос). Это уменьшает overhead от прерываний и повышает пропускную способность. Драйвер вызывает napi_schedule(), ядро потом опрашивает через napi_poll()."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Глубокое понимание механизмов netfilter: хуки, вердикты, регистрация, работа с sk_buff, приоритеты и внутреннее устройство",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Опишите, когда срабатывает каждый из 5 хуков netfilter для IPv4: NF_INET_PRE_ROUTING, NF_INET_LOCAL_IN, NF_INET_FORWARD, NF_INET_LOCAL_OUT, NF_INET_POST_ROUTING. Нарисуйте путь пакета через хуки для входящего, транзитного и исходящего пакетов.",
+          "hint": "Подумайте о точке принятия решения о маршрутизации (routing decision) и о том, как она разделяет путь пакета на ветви: локальная доставка vs forwarding.",
+          "reference": "NF_INET_PRE_ROUTING — сразу после приёма пакета NIC до routing decision. NF_INET_LOCAL_IN — после routing decision, если пакет предназначен локальной машине. NF_INET_FORWARD — после routing decision, если пакет транзитный (не для нас). NF_INET_LOCAL_OUT — при отправке пакета от локального процесса, до routing decision исходящего пакета. NF_INET_POST_ROUTING — после routing decision, непосредственно перед отправкой пакета через NIC. Входящий пакет: PRE_ROUTING → routing → LOCAL_IN → приложение. Транзитный: PRE_ROUTING → routing → FORWARD → POST_ROUTING → NIC. Исходящий: приложение → LOCAL_OUT → routing → POST_ROUTING → NIC."
+        },
+        {
+          "type": "self_grade",
+          "text": "Объясните значение каждого из вердиктов netfilter: NF_ACCEPT, NF_DROP, NF_STOLEN, NF_QUEUE, NF_REPEAT. Кто освобождает sk_buff в каждом случае?",
+          "hint": "Обратите особое внимание на NF_STOLEN — в этом случае ответственность за sk_buff переходит к модулю.",
+          "reference": "NF_ACCEPT — пропустить пакет, sk_buff передаётся дальше по стеку. NF_DROP — отбросить пакет, ядро вызовет kfree_skb(). NF_STOLEN — хук забирает пакет себе; ядро НЕ освобождает sk_buff и НЕ продолжает обработку; модуль обязан сам вызвать kfree_skb() или переиспользовать буфер. NF_QUEUE — поместить пакет в очередь для userspace (через nfnetlink_queue), где userspace-программа может вынести вердикт. NF_REPEAT — повторить вызов текущего хука заново (редко используется, осторожно — можно получить бесконечный цикл)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как зарегистрировать хук netfilter через nf_register_net_hook()? Опишите заполнение структуры nf_hook_ops и правильную последовательность регистрации/дерегистрации.",
+          "hint": "Вспомните поля struct nf_hook_ops: hook, pf, hooknum, priority. Подумайте о том, что регистрация привязана к struct net (network namespace).",
+          "reference": "Нужно заполнить struct nf_hook_ops: .hook = указатель на callback-функцию (unsigned int fn(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)), .pf = NFPROTO_IPV4, .hooknum = NF_INET_PRE_ROUTING (или другой), .priority = NF_IP_PRI_FIRST (или другой). Регистрация: nf_register_net_hook(&init_net, &nfho) в module_init. Дерегистрация: nf_unregister_net_hook(&init_net, &nfho) в module_exit. Для нескольких хуков: nf_register_net_hooks()/nf_unregister_net_hooks() с массивом. Сигнатура callback в ядрах 4.1+: unsigned int hook_func(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как из callback-функции хука netfilter получить IP-заголовок пакета и прочитать адреса источника и назначения? Какие функции и макросы для этого используются?",
+          "hint": "Обратите внимание на ip_hdr(skb) и поля struct iphdr. Подумайте о порядке байт (network byte order).",
+          "reference": "Для получения IP-заголовка используется ip_hdr(skb), который возвращает указатель на struct iphdr. Адрес источника: iph->saddr, адрес назначения: iph->daddr — оба в network byte order (big-endian). Для вывода используют %pI4 в printk: pr_info(\"src: %pI4\\n\", &iph->saddr). Для TCP/UDP заголовков: tcp_hdr(skb), udp_hdr(skb) — но предварительно нужно убедиться, что заголовки доступны в линейной части skb (pskb_may_pull). Протокол верхнего уровня: iph->protocol (IPPROTO_TCP, IPPROTO_UDP, IPPROTO_ICMP)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Зачем нужна функция skb_make_writable() / skb_ensure_writable() и когда её необходимо вызывать в хуке netfilter?",
+          "hint": "Подумайте о том, что sk_buff может быть shared (cloned) или данные могут находиться в paged fragments.",
+          "reference": "skb_ensure_writable(skb, len) (ранее skb_make_writable) необходимо вызывать ПЕРЕД любой модификацией данных пакета. Причины: 1) sk_buff может быть клонированным (skb_cloned) — данные разделяются между несколькими skb, и запись без копирования повредит другие. 2) Нужные данные могут находиться в paged fragments (не в линейной части). Функция делает cow (copy-on-write) при необходимости и подтягивает данные в линейную часть. Аргумент len — количество байт от начала данных, которые нужно сделать записываемыми. Например, для модификации IP-заголовка: skb_ensure_writable(skb, sizeof(struct iphdr)). При ошибке возвращает ненулевое значение."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как работает приоритет хуков в netfilter? Перечислите основные константы NF_IP_PRI_* и объясните порядок вызова хуков с разными приоритетами.",
+          "hint": "Меньшее числовое значение приоритета означает более ранний вызов. Подумайте, где стоят conntrack, mangle, filter, NAT.",
+          "reference": "Приоритет задаётся целым числом в поле priority структуры nf_hook_ops. Хуки вызываются в порядке возрастания числового значения приоритета (меньше = раньше). Основные константы: NF_IP_PRI_FIRST = INT_MIN (самый ранний), NF_IP_PRI_RAW_BEFORE_DEFRAG = -450, NF_IP_PRI_CONNTRACK_DEFRAG = -400, NF_IP_PRI_RAW = -300, NF_IP_PRI_SELINUX_FIRST = -225, NF_IP_PRI_CONNTRACK = -200, NF_IP_PRI_MANGLE = -150, NF_IP_PRI_NAT_DST = -100 (DNAT), NF_IP_PRI_FILTER = 0, NF_IP_PRI_SECURITY = 50, NF_IP_PRI_NAT_SRC = 100 (SNAT), NF_IP_PRI_SELINUX_LAST = 225, NF_IP_PRI_CONNTRACK_HELPER = 300, NF_IP_PRI_LAST = INT_MAX. Порядок обеспечивает: сначала conntrack видит пакет, потом mangle, потом filter, потом NAT."
+        },
+        {
+          "type": "self_grade",
+          "text": "Чем struct sk_buff отличается от обычного буфера данных? Опишите указатели head, data, tail, end и роль метаданных.",
+          "hint": "sk_buff — это не просто массив байт, а сложная структура с headroom, tailroom, метаданными маршрутизации, временными метками и указателями на заголовки.",
+          "reference": "sk_buff содержит 4 ключевых указателя на область данных: head — начало выделенного буфера; data — начало актуальных данных пакета (может сдвигаться через skb_push/skb_pull); tail — конец актуальных данных; end — конец выделенного буфера. Расстояние head→data — это headroom (место для добавления заголовков через skb_push). Расстояние tail→end — это tailroom (место для добавления данных через skb_put). Метаданные включают: указатели на заголовки уровней (mac_header, network_header, transport_header), информацию о сетевом устройстве (dev), маршрутизации (dst), временные метки, флаги (cloned, pkt_type), счётчики ссылок, информацию conntrack и многое другое. Это делает sk_buff основной структурой всего сетевого стека."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как правильно логировать события в callback-функции хука netfilter, чтобы не перегрузить систему? Объясните механизм rate limiting для printk.",
+          "hint": "Подумайте о net_ratelimit(), printk_ratelimited(), pr_info_ratelimited() и о том, что происходит при DDoS-атаке, если логировать каждый дропнутый пакет.",
+          "reference": "В netfilter-хуке категорически нельзя вызывать printk/pr_info на каждый пакет — при высокой нагрузке это заполнит лог-буфер, заблокирует систему и убьёт производительность. Решения: 1) pr_info_ratelimited() / printk_ratelimited() — автоматически ограничивают частоту вывода (по умолчанию ~10 сообщений в 5 секунд). 2) net_ratelimit() — проверка перед printk: if (net_ratelimit()) pr_info(...). 3) Счётчик + периодический вывод: считать пакеты атомарным счётчиком, выводить статистику через /proc или по таймеру. 4) Для отладки использовать tracepoints или eBPF вместо printk. В production логирование в hot path должно быть минимальным или отсутствовать."
+        },
+        {
+          "type": "self_grade",
+          "text": "Зачем нужен connection tracking (conntrack) в netfilter и какие состояния соединений он отслеживает? Как conntrack связан с NAT?",
+          "hint": "Подумайте о stateful firewall vs stateless, и о том, почему NAT невозможен без отслеживания соединений.",
+          "reference": "Connection tracking (nf_conntrack) позволяет ядру отслеживать состояние сетевых соединений, превращая stateless фильтрацию в stateful. Основные состояния: NEW — первый пакет соединения; ESTABLISHED — пакет принадлежит установленному соединению (видели трафик в обоих направлениях); RELATED — пакет связан с существующим соединением (например, FTP data, ICMP error); INVALID — пакет не принадлежит ни одному известному соединению и не может быть классифицирован; UNTRACKED — пакет явно исключён из отслеживания (через CT target). Связь с NAT: NAT (SNAT/DNAT/masquerade) невозможен без conntrack, потому что ядро должно помнить трансляцию адресов для каждого соединения, чтобы корректно модифицировать обратные пакеты. conntrack хранит кортеж (src_ip, src_port, dst_ip, dst_port, protocol) для каждого направления."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как nftables устроен внутри ядра? Опишите архитектуру pseudo-VM, понятия таблиц, цепочек и правил в nftables.",
+          "hint": "Подумайте о том, что в отличие от iptables, nftables не использует фиксированные match/target модули, а компилирует правила в байт-код для виртуальной машины.",
+          "reference": "nftables использует виртуальную машину (nf_tables VM) в ядре. Архитектура: 1) Userspace-утилита nft компилирует правила в байт-код (expressions) и передаёт в ядро через Netlink (nfnetlink). 2) В ядре правила хранятся как последовательность expressions (nft_expr), каждое из которых выполняет одну операцию: загрузить поле пакета в регистр, сравнить значение, выполнить lookup в множестве (set), вынести вердикт. 3) Таблица (nft_table) — контейнер для цепочек, привязана к семейству протоколов (ip, ip6, inet, arp, bridge). 4) Цепочка (nft_chain) — привязана к хуку netfilter (base chain) или вызывается из другой цепочки (regular chain). 5) Правило (nft_rule) — упорядоченная последовательность expressions. Преимущества: единый фреймворк для всех протоколов, встроенные множества (sets, maps), атомарные обновления правил, лучшая производительность через оптимизацию байт-кода."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Продвинутые вопросы: модификация пакетов, подводные камни вердиктов, eBPF/XDP, NAT internals, безопасная работа с shared sk_buff и производительность",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Как модифицировать IP-пакет внутри хука netfilter и корректно пересчитать контрольные суммы? Опишите полную последовательность действий для изменения TTL.",
+          "hint": "Подумайте о: skb_ensure_writable → модификация поля → инкрементальный пересчёт IP checksum через csum_replace2/ip_decrease_ttl → пересчёт L4 checksum если нужно.",
+          "reference": "Полная последовательность для изменения TTL: 1) skb_ensure_writable(skb, sizeof(struct iphdr)) — убедиться, что заголовок записываем (cow при необходимости). 2) iph = ip_hdr(skb) — получить указатель на заголовок (может измениться после ensure_writable!). 3) Для TTL удобно использовать ip_decrease_ttl(iph), которая атомарно уменьшает TTL и пересчитывает checksum инкрементально. 4) Для произвольной модификации: сохранить старое значение, записать новое, пересчитать checksum через csum_replace2(&iph->check, old_val, new_val) для инкрементального обновления или ip_send_check(iph) для полного пересчёта. 5) Если меняются IP-адреса, нужно также обновить L4 checksum (TCP/UDP), т.к. они включают pseudo-header с IP-адресами: inet_proto_csum_replace4(&th->check, skb, old_addr, new_addr, true). 6) Вернуть NF_ACCEPT для продолжения обработки."
+        },
+        {
+          "type": "self_grade",
+          "text": "Какие подводные камни связаны с вердиктом NF_STOLEN? Кто отвечает за освобождение sk_buff и какие проблемы могут возникнуть?",
+          "hint": "Подумайте о: утечках памяти, double-free, use-after-free, взаимодействии с conntrack и о том, что происходит с другими хуками в цепочке.",
+          "reference": "NF_STOLEN означает, что хук забирает sk_buff полностью — ядро не будет ни освобождать его, ни передавать дальше. Подводные камни: 1) Утечка памяти: если модуль вернул NF_STOLEN, но забыл вызвать kfree_skb() или consume_skb() — sk_buff утечёт навсегда. 2) Double-free: если модуль освободил skb и при этом вернул NF_ACCEPT вместо NF_STOLEN — ядро попытается использовать freed memory. 3) Остальные хуки в цепочке НЕ будут вызваны — NF_STOLEN прерывает обработку. 4) conntrack может остаться в inconsistent state, если пакет украден после conntrack, но до завершения трансляции. 5) При выгрузке модуля: если есть украденные skb, ожидающие обработки (таймеры, workqueue), нужно дождаться их завершения перед rmmod. 6) NF_STOLEN часто используется для re-injection через netif_rx()/nf_reinject(), но требует аккуратной работы со счётчиком ссылок skb."
+        },
+        {
+          "type": "self_grade",
+          "text": "В каких сценариях eBPF/XDP вытесняет netfilter и почему? Какие преимущества в производительности и безопасности даёт XDP?",
+          "hint": "Подумайте о: zero-copy, обработке до выделения sk_buff, верификаторе eBPF, JIT-компиляции, DDoS mitigation и уровне абстракции.",
+          "reference": "XDP вытесняет netfilter в сценариях, требующих максимальной производительности: 1) DDoS mitigation — XDP может дропать пакеты на уровне драйвера (до выделения sk_buff), достигая десятков миллионов pps на одном ядре. 2) Load balancing (Facebook Katran, Cilium) — перенаправление пакетов без прохождения через весь стек. 3) Packet sampling/monitoring — быстрый анализ трафика. Преимущества производительности: XDP работает до alloc_skb(), избегая аллокации sk_buff (~200 байт метаданных); может работать в native mode (драйвер) или offload mode (NIC); использует per-CPU обработку без блокировок; JIT-компиляция eBPF в нативный код. Преимущества безопасности: eBPF-верификатор гарантирует отсутствие бесконечных циклов, out-of-bounds доступа, утечек памяти; программа не может вызвать kernel panic; ограниченный набор helper-функций. Ограничения XDP: нет доступа к conntrack, нет full sk_buff API, сложнее реализовать stateful логику."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как работает NAT в ядре Linux через netfilter и conntrack? Опишите внутренний механизм SNAT и DNAT.",
+          "hint": "Подумайте о: хуках PREROUTING (DNAT) и POSTROUTING (SNAT), роли conntrack в запоминании маппинга, и о том, как обратные пакеты автоматически де-NATятся.",
+          "reference": "NAT в Linux реализован через совместную работу conntrack и NAT-хуков netfilter. Механизм DNAT: 1) Пакет приходит → NF_INET_PRE_ROUTING → conntrack создаёт запись ct с оригинальным кортежем (src, dst). 2) NAT-хук в PREROUTING с приоритетом NF_IP_PRI_NAT_DST (-100) модифицирует dst address/port в ct->tuplehash[IP_CT_DIR_REPLY]. 3) Ядро модифицирует IP-заголовок пакета согласно NAT mapping. 4) Routing decision использует уже изменённый dst. 5) Обратный пакет: conntrack находит ct запись по reply tuple и автоматически делает обратную трансляцию (un-DNAT). Механизм SNAT: аналогично, но хук в NF_INET_POST_ROUTING с приоритетом NF_IP_PRI_NAT_SRC (100), модифицирует src address. Masquerade — специальный случай SNAT, где src address берётся из outgoing interface. Ключевое: NAT применяется только к первому пакету (NEW), для последующих (ESTABLISHED) conntrack автоматически применяет запомненный mapping без повторного выполнения правил."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как безопасно модифицировать shared (клонированный) sk_buff? Объясните механизмы skb_unshare(), pskb_copy(), skb_copy() и cow (copy-on-write).",
+          "hint": "Подумайте о разнице между клонированными skb (shared data, separate metadata) и shared pages (paged frags). Когда нужна полная копия, а когда достаточно cow?",
+          "reference": "sk_buff может быть разделяемым на нескольких уровнях: 1) Клон (skb_clone) — отдельные struct sk_buff, но общий data buffer. skb->cloned=1. 2) Shared data — линейные данные буфера разделяются (skb_shinfo->dataref > 1). 3) Paged fragments — данные в отдельных страницах (frags[]). Методы безопасной модификации: skb_unshare(skb, GFP_ATOMIC) — если skb клонирован, создаёт полную копию данных; если нет — возвращает оригинал. Освобождает оригинальный skb при копировании! pskb_copy(skb, GFP_ATOMIC) — копирует sk_buff и линейные данные, но paged frags остаются shared (refcount увеличивается). skb_copy(skb, GFP_ATOMIC) — полная глубокая копия, включая paged frags. Линеаризует данные. skb_ensure_writable(skb, len) — рекомендуемый метод для netfilter: делает записываемыми первые len байт через cow, подтягивая из frags при необходимости. Правило: после любой из этих функций указатели на заголовки (ip_hdr, tcp_hdr) могут стать невалидными — нужно получить их заново!"
+        },
+        {
+          "type": "self_grade",
+          "text": "Почему printk в hot path netfilter убивает пропускную способность и какие альтернативы существуют для отладки и мониторинга?",
+          "hint": "Подумайте о: блокировках printk (logbuf_lock), стоимости форматирования строк, serial console bottleneck, и о механизмах tracing/eBPF.",
+          "reference": "printk в hot path убивает throughput по нескольким причинам: 1) Блокировка: printk берёт logbuf_lock (spinlock), создавая contention между CPU. В ядрах 5.10+ используется lock-free ringbuffer, но console output всё равно сериализуется. 2) Console output: если настроена serial console, каждый printk синхронно пишет символы на UART со скоростью ~115200 baud — это сотни микросекунд на сообщение. 3) Форматирование строк (vsnprintf) дорого в контексте softirq/interrupt. 4) При миллионах пакетов/сек даже ratelimited printk создаёт заметный overhead. Альтернативы: 1) tracepoints — нулевой overhead когда выключены, ftrace для анализа: trace_nf_hook, trace_skb_*. 2) eBPF — bpf_trace_printk() пишет в trace pipe, или BPF maps для агрегации статистики. 3) perf events — для performance analysis. 4) /proc или /sys файлы — экспорт счётчиков через seq_file, читаемых по запросу. 5) Atomic counters + periodic output — считать пакеты atomic_inc(), выводить по таймеру или при чтении procfs."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как корректно выгрузить netfilter-модуль (rmmod) без потери пакетов и без race conditions? Какие гарантии даёт ядро и какие меры нужно предпринять?",
+          "hint": "Подумайте о: synchronize_rcu()/synchronize_net(), порядке дерегистрации, что происходит с пакетами, которые в данный момент обрабатываются в хуке, и о ресурсах (таймеры, workqueue).",
+          "reference": "Корректная выгрузка netfilter-модуля: 1) nf_unregister_net_hook()/nf_unregister_net_hooks() — убирает хук из цепочки. После этого новые пакеты не попадут в callback. 2) Внутри nf_unregister_net_hook() вызывается synchronize_net() (обёртка над synchronize_rcu()), которая ждёт завершения всех текущих RCU read-side critical sections — т.е. все пакеты, которые в данный момент обрабатываются в хуке, завершат обработку до возврата из nf_unregister. 3) После возврата из nf_unregister гарантировано: callback больше не выполняется ни на одном CPU. 4) Далее в module_exit нужно освободить ресурсы: отменить таймеры (del_timer_sync), отменить workqueue (cancel_work_sync), удалить procfs-записи (remove_proc_entry), освободить память. 5) О потере пакетов: пакеты, пришедшие ПОСЛЕ дерегистрации хука, просто не увидят этот хук — они пройдут мимо (как будто хука не было). Это не потеря, а штатное поведение. 6) Потенциальная проблема: если модуль использовал NF_STOLEN и держит skb — нужно дождаться обработки/освобождения всех украденных буферов перед выгрузкой."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания: написание netfilter-модулей ядра Linux для фильтрации, логирования, подсчёта и модификации пакетов",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-nf-drop",
+          "title": "netfilter-модуль: дроп ICMP-пакетов с логом"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-nf-port-filter",
+          "title": "netfilter-модуль: блокировка по порту назначения"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "03-nf-log-stats",
+          "title": "netfilter-модуль: счётчик пакетов по протоколу с procfs"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "04-nf-modify-ttl",
+          "title": "netfilter-модуль: модификация TTL и пересчёт чексуммы"
+        }
+      ]
+    }
+  }
+}

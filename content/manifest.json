@@ -252,12 +252,12 @@
           "id": "k6",
           "title": "K6. netfilter и сетевой стек",
           "tag": "новое",
-          "file": null,
-          "quiz": null,
+          "file": "modules/16-K6-netfilter-network-stack.md",
+          "quiz": "quizzes/k6.json",
           "exercises": [
             {"id": "01-nf-hook", "title": "netfilter-модуль с drop по критерию", "type": "lkm"}
           ],
-          "status": "planned"
+          "status": "ready"
         },
         {
           "id": "k7",
