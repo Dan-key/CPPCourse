@@ -266,10 +266,15 @@
           "id": "k7",
           "title": "K7. Трассировка из ядра",
           "tag": "частично есть",
-          "file": null,
-          "quiz": null,
-          "exercises": [],
-          "status": "planned"
+          "file": "modules/17-K7-kernel-tracing.md",
+          "quiz": "quizzes/k7.json",
+          "exercises": [
+            {"id": "01-kprobe-count", "title": "kprobe: счётчик вызовов функции (per-CPU + procfs)", "type": "lkm"},
+            {"id": "02-kretprobe-latency", "title": "kretprobe: латентность функции ядра", "type": "lkm"},
+            {"id": "03-trace-printk", "title": "trace_printk: лог в ftrace-буфер вместо dmesg", "type": "lkm"},
+            {"id": "04-kprobe-arg", "title": "kprobe: фильтр по аргументу функции", "type": "lkm"}
+          ],
+          "status": "ready"
         }
       ]
     },
@@ -401,6 +406,80 @@
           "file": null,
           "quiz": null,
           "exercises": [],
+          "status": "planned"
+        },
+        {
+          "id": "spec-f",
+          "title": "(f) Изоляция, контейнеры и виртуализация",
+          "tag": "новое",
+          "file": null,
+          "quiz": null,
+          "exercises": [],
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "stagev",
+      "title": "Специализация (f). Изоляция, контейнеры и виртуализация",
+      "modules": [
+        {
+          "id": "v1",
+          "title": "V1. Namespaces: примитивы изоляции",
+          "tag": "новое",
+          "file": "modules/v1-namespaces-isolation.md",
+          "quiz": "quizzes/v1.json",
+          "exercises": [
+            {"id": "01-unshare-namespaces", "title": "Создание namespaces через clone/unshare"},
+            {"id": "02-userns-idmap",       "title": "User namespace и uid/gid map (rootless)"},
+            {"id": "03-mini-container",     "title": "Мини-контейнер: clone + pivot_root + /proc + exec"},
+            {"id": "04-netns-veth",         "title": "Net namespace и veth-пара"},
+            {"id": "05-enter-namespace",    "title": "setns: вход в чужой namespace (как nsenter)"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "v2",
+          "title": "V2. cgroups v2, capabilities, seccomp, Landlock",
+          "tag": "новое",
+          "file": "modules/v2-cgroups-seccomp.md",
+          "quiz": "quizzes/v2.json",
+          "exercises": [
+            {"id": "01-cgroup-limits",   "title": "Лимиты mem/cpu/pids через cgroup v2"},
+            {"id": "02-drop-caps",       "title": "Сброс лишних capabilities"},
+            {"id": "03-seccomp-filter",  "title": "seccomp-bpf whitelist системных вызовов"},
+            {"id": "04-seccomp-argcheck","title": "seccomp с проверкой аргументов и SECCOMP_RET_ERRNO"},
+            {"id": "05-landlock",        "title": "Landlock: ограничение доступа к каталогам"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "v3",
+          "title": "V3. Контейнерные рантаймы и образы",
+          "tag": "новое",
+          "file": "modules/v3-container-runtimes.md",
+          "quiz": "quizzes/v3.json",
+          "exercises": [
+            {"id": "01-overlayfs",     "title": "Сборка rootfs через overlayfs (lower/upper/work)"},
+            {"id": "02-mini-runtime",  "title": "Мини-рантайм: namespaces + cgroup + seccomp + pivot_root"},
+            {"id": "03-container-net", "title": "Сеть контейнера: veth + bridge + NAT"},
+            {"id": "04-rootless",      "title": "Rootless-контейнер на user-namespace"},
+            {"id": "05-pid1-reaper",   "title": "Корректный pid1: reaping зомби и проброс сигналов"}
+          ],
+          "status": "planned"
+        },
+        {
+          "id": "v4",
+          "title": "V4. Виртуализация: KVM, QEMU, virtio",
+          "tag": "новое",
+          "file": "modules/v4-kvm-qemu-virtio.md",
+          "quiz": "quizzes/v4.json",
+          "exercises": [
+            {"id": "01-tiny-kvm",      "title": "Крошечный KVM-монитор: /dev/kvm → KVM_RUN"},
+            {"id": "02-kvm-io",        "title": "Обработка KVM_EXIT_IO/MMIO: виртуальное устройство"},
+            {"id": "03-guest-loader",  "title": "Загрузка и исполнение гостевого кода"},
+            {"id": "04-virtio-ring",   "title": "Разбор virtio split virtqueue (кольца)"}
+          ],
           "status": "planned"
         }
       ]

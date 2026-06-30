@@ -1,0 +1,238 @@
+{
+  "module": "k7",
+  "title": "K7 — Трассировка из ядра",
+  "levels": {
+    "БАЗА": {
+      "desc": "Базовые понятия: ftrace, tracepoint, kprobe, eBPF/bpftrace, trace_printk, kallsyms, kdump.",
+      "questions": [
+        {
+          "type": "mcq",
+          "text": "Чем `function_graph` отличается от `function` в ftrace?",
+          "options": [
+            "Ничем, это синонимы",
+            "`function_graph` рисует ДЕРЕВО вызовов с длительностью каждой функции, `function` — плоский список вызовов",
+            "`function` работает только в userspace",
+            "`function_graph` не требует `CONFIG_FUNCTION_TRACER`"
+          ],
+          "answer": 1,
+          "explanation": "`function` даёт плоский поток «функция ← вызыватель» без времени. `function_graph` показывает вложенность (вход `{` / выход `}`) и ДЛИТЕЛЬНОСТЬ каждой функции — это инструмент для латентностного анализа пути в ядре. За это платит более высоким overhead (перехватывает и вход, и выход)."
+        },
+        {
+          "type": "mcq",
+          "text": "Где физически находится интерфейс управления ftrace?",
+          "options": [
+            "В отдельном демоне ftraced",
+            "В файлах `tracefs` (`/sys/kernel/tracing`)",
+            "Только через системный вызов `ftrace()`",
+            "В `/proc/ftrace`"
+          ],
+          "answer": 1,
+          "explanation": "ftrace управляется ТОЛЬКО через файлы в tracefs (`/sys/kernel/tracing`, старый путь — `/sys/kernel/debug/tracing`): `current_tracer`, `trace`, `set_ftrace_filter`, `events/`. Никакого демона или спец-syscall не нужно — записал в файл, прочитал из файла."
+        },
+        {
+          "type": "mcq",
+          "text": "Что такое tracepoint?",
+          "options": [
+            "Точка останова GDB в ядре",
+            "Заранее расставленный разработчиками ядра именованный маркер с полями, относительно стабильный между версиями",
+            "Динамическая точка, которую ставят на любой адрес из userspace",
+            "Аппаратный watchpoint процессора"
+          ],
+          "answer": 1,
+          "explanation": "Tracepoint — статический маркер, встроенный в исходник ядра («здесь произошло X с полями ...»). Его имя и поля — часть ABI наблюдаемости (относительно стабильны), в отличие от kprobe, которую ты ставишь на произвольный адрес и которая хрупка к переименованию/инлайнингу функции."
+        },
+        {
+          "type": "mcq",
+          "text": "Что делает kprobe технически, чтобы перехватить функцию ядра?",
+          "options": [
+            "Пересобирает функцию с инструментацией",
+            "Заменяет инструкцию по целевому адресу на breakpoint (`int3` на x86), отдавая управление обработчику",
+            "Останавливает процесс через ptrace",
+            "Меняет таблицу системных вызовов"
+          ],
+          "answer": 1,
+          "explanation": "kprobe сохраняет оригинальную инструкцию и ставит на её место breakpoint (`int3`). При попадании срабатывает pre_handler, затем оригинальная инструкция исполняется в single-step, затем post_handler. Оптимизированная kprobe заменяет `int3` на `jmp`/использует ftrace — почти бесплатно."
+        },
+        {
+          "type": "mcq",
+          "text": "Куда пишет `trace_printk`, в отличие от `printk`?",
+          "options": [
+            "В системный лог `dmesg` и на консоль",
+            "В ftrace ring buffer (`/sys/kernel/tracing/trace`), дёшево и без лока консоли",
+            "В файл `/var/log/trace`",
+            "Никуда, это no-op"
+          ],
+          "answer": 1,
+          "explanation": "`trace_printk` пишет в ftrace ring buffer (читается через `cat /sys/kernel/tracing/trace`), без сериализации под локом консоли — дёшево, почти не искажает тайминги, и встаёт в общий таймлайн с трассировкой. Но это ОТЛАДОЧНЫЙ инструмент (печатает баннер-предупреждение), не для прода."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему oops печатает ИМЕНА функций (`my_func+0x42`), а не голые адреса?",
+          "options": [
+            "Ядро на лету запускает `addr2line`",
+            "Благодаря встроенной таблице символов kallsyms (`CONFIG_KALLSYMS`)",
+            "Имена берутся из `/etc/kernel-symbols`",
+            "Это делает GDB после краша"
+          ],
+          "answer": 1,
+          "explanation": "Ядро встраивает kallsyms — таблицу «адрес↔имя» своих символов (`/proc/kallsyms`), поэтому oops сразу показывает имя+offset. Но `файл:строку` kallsyms не даёт — для этого нужен `addr2line`/`faddr2line`/`decode_stacktrace.sh` по vmlinux/.ko с debuginfo (совпадение по build-id)."
+        },
+        {
+          "type": "mcq",
+          "text": "Что нужно настроить ЗАРАНЕЕ, чтобы после паники получить `vmcore`?",
+          "options": [
+            "Только установить пакет `crash`",
+            "Зарезервировать память параметром загрузки `crashkernel=` и включить службу kdump",
+            "Запустить `gcore` на ядре",
+            "Достаточно `ulimit -c unlimited`"
+          ],
+          "answer": 1,
+          "explanation": "kdump через kexec грузит capture-ядро в заранее зарезервированную память — поэтому в cmdline нужен `crashkernel=NNNM` И включённая служба kdump (плюс debuginfo для `crash`). Готовность: `cat /sys/kernel/kexec_crash_loaded` == 1. Без подготовки после паники у тебя только текст oops."
+        },
+        {
+          "type": "mcq",
+          "text": "В каком контексте исполняется обработчик kprobe/kretprobe?",
+          "options": [
+            "В отдельном потоке ядра, где можно спать",
+            "В атомарном контексте трассируемой функции — спать НЕЛЬЗЯ (нет `mutex`/`GFP_KERNEL`/`msleep`)",
+            "В userspace процесса",
+            "В контексте прерывания таймера всегда"
+          ],
+          "answer": 1,
+          "explanation": "Обработчик бежит в контексте той функции, которую трассируют, — часто атомарном (прерывание/softirq/удержан лок). Те же правила, что в K2/K6: только `GFP_ATOMIC`, per-CPU, атомики; никаких блокирующих операций. eBPF снимает часть риска верификатором, kprobe-обработчик на C — целиком твоя ответственность."
+        },
+        {
+          "type": "mcq",
+          "text": "Почему выключенная трассировка функции через динамический ftrace стоит почти ноль?",
+          "options": [
+            "Ядро проверяет глобальный флаг на каждом вызове",
+            "На месте вызова `__fentry__` стоит `nop`; при включении ядро ПЕРЕПИСЫВАЕТ его в `call` только для активных функций",
+            "Трассировка всегда включена, просто вывод подавляется",
+            "Функции с трассировкой вынесены в отдельный модуль"
+          ],
+          "answer": 1,
+          "explanation": "GCC (`-pg`) вставляет в начало каждой функции вызов `__fentry__`, но ядро при загрузке переписывает его в `nop`. Когда ты добавляешь функцию в `set_ftrace_filter`, ядро на лету патчит её `nop` обратно в `call` трамплина (`text_poke`). Платят только активные функции — выключенная трассировка ≈ бесплатна (`CONFIG_DYNAMIC_FTRACE`)."
+        }
+      ]
+    },
+    "МЕХАНИЗМЫ": {
+      "desc": "Как это работает: ftrace-механизм, kprobe/kretprobe, регистрация из модуля, eBPF maps, bpftrace, flame graph.",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Объясни разницу `function` и `function_graph` в ftrace: что в выводе, где видно время, почему у graph выше overhead и когда какой брать.",
+          "hint": "плоский список ← вызыватель vs дерево с длительностью; вход vs вход+выход.",
+          "reference": "`function` — плоский поток «функция ← вызыватель», без длительности (только timestamp входа), дешевле (перехват только входа). `function_graph` — дерево вызовов с отступами и ДЛИТЕЛЬНОСТЬЮ каждой функции (вход `{` и выход `}`), дороже (перехват входа и выхода). Бери `function`, когда нужен факт вызова и кто вызвал (поток событий, быстро); `function_graph` — когда нужна структура пути и где теряется время (латентность). На горячем коде сначала сузь `set_ftrace_filter`/`set_graph_function`, потом включай graph."
+        },
+        {
+          "type": "self_grade",
+          "text": "kprobe vs tracepoint: кто их создаёт, что стабильнее и почему, когда выбрать каждый?",
+          "hint": "разработчик ядра vs ты; имя функции не ABI vs поля tracepoint ~ABI.",
+          "reference": "Tracepoint расставляет разработчик ядра в исходнике; он стабилен (имя/поля — почти ABI) и несёт осмысленные поля. kprobe ставишь ты динамически на ЛЮБУЮ функцию, но она хрупка: имя функции — не ABI, между версиями функция может быть переименована/удалена/заинлайнена → probe отвалится; данные — сырые регистры. Правило: сначала ищи готовый tracepoint (`ls events/`), и только если нужного нет — ставь kprobe на функцию. bpftrace умеет оба (`tracepoint:`/`kprobe:`)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как устроен динамический ftrace? Что такое `__fentry__`, зачем nop-патчинг, почему можно держать ftrace в проде?",
+          "hint": "`-pg` → call __fentry__ → ядро переписывает в nop → обратно в call для активных.",
+          "reference": "GCC с `-pg` вставляет в начало каждой функции вызов `__fentry__` (раньше mcount). Постоянный `call` был бы overhead всегда, поэтому ядро при загрузке переписывает все эти `call` в `nop`. При добавлении функции в фильтр ядро на лету патчит её `nop` обратно в `call` трамплина трассировщика (через `text_poke` с синхронизацией CPU). Итог: выключенная трассировка ≈ ноль, платят только активные функции, включение/выключение динамическое — поэтому `CONFIG_DYNAMIC_FTRACE` включён в проде дистрибутивов."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как зарегистрировать kprobe из модуля ядра и что ОБЯЗАТЕЛЬНО сделать при выгрузке? Что будет, если забыть?",
+          "hint": "register_kprobe(&kp) с .symbol_name/.pre_handler; unregister в exit; иначе breakpoint в освобождённой памяти.",
+          "reference": "Завести `struct kprobe kp = { .symbol_name=\"...\", .pre_handler=fn }`, в init вызвать `register_kprobe(&kp)` (резолвит адрес через kallsyms, ставит breakpoint), проверить возврат. В exit ОБЯЗАТЕЛЬНО `unregister_kprobe(&kp)`. Если забыть: после выгрузки кода модуля breakpoint по целевому адресу прыгнет в обработчик, которого больше нет в памяти → oops/use-after-free. Обработчик — атомарный контекст: считать в per-CPU/атомики, без сна, отдавать агрегат через /proc на редком чтении."
+        },
+        {
+          "type": "self_grade",
+          "text": "Чем kretprobe отличается от kprobe и как ею измерить латентность функции ядра? Что такое `maxactive` и `data_size`?",
+          "hint": "перехват ВОЗВРАТА; entry_handler сохраняет время в ri->data, handler считает дельту.",
+          "reference": "kprobe срабатывает на ВХОДЕ, kretprobe — на ВОЗВРАТЕ (подменяет адрес возврата на трамплин). У неё `entry_handler` (на входе — сохранить `ktime_get()` в `ri->data`) и `handler` (на возврате — дельта времени + `regs_return_value(regs)`). `data_size` — сколько байт `ri->data` резервируется на КАЖДЫЙ одновременный вызов; `maxactive` — сколько вызовов функции могут быть «в полёте» параллельно (превышение → `nmissed`, потерянные возвраты). Латентность = время на выходе минус сохранённое на входе, агрегируется в per-CPU/гистограмму."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое eBPF maps и зачем они, если программа «без состояния между вызовами»? Назови 2-3 типа и их применение.",
+          "hint": "hash/percpu-array/ringbuf/stack-trace; доступны и из ядра, и из userspace.",
+          "reference": "eBPF-программа сама по себе без состояния — состояние держат maps (типизированные хранилища в ядре, доступные и программе, и userspace через `bpf()`/bpftool). `BPF_MAP_TYPE_HASH` — ключ→значение (PID→счётчик); `PERCPU_ARRAY` — счётчики без контеншна между ядрами (C1/K2); `RINGBUF` — поток событий в userspace; `STACK_TRACE` — стеки для flame graph; `LRU_HASH` — хэш с вытеснением. Так данные из ядра доходят до инструмента без своего /proc, и так bpftrace реализует `@`-агрегаты."
+        },
+        {
+          "type": "self_grade",
+          "text": "Опиши структуру bpftrace-скрипта (probe/filter/action) и как им снять гистограмму латентности своей функции.",
+          "hint": "kprobe сохраняет nsecs по tid, kretprobe считает дельту → hist(); @map агрегирует в ядре.",
+          "reference": "Скрипт — набор блоков `probe /filter/ { action }`. Для латентности: `kprobe:func { @t[tid]=nsecs; }` и `kretprobe:func /@t[tid]/ { @ns = hist(nsecs - @t[tid]); delete(@t[tid]); }`. `@name[key]` — map с агрегатом (`count`/`sum`/`avg`/`hist`); ключ `tid` разводит параллельные вызовы (как `maxactive`); `/filter/` — условие; `hist()` агрегирует в ядре (дёшево, не поток событий); печать по Ctrl-C или `print`. builtins: `comm`,`pid`,`nsecs`,`args->`,`retval`,`kstack`."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как снять flame graph ядра под нагрузкой (perf и eBPF путь) и почему стек может оборваться?",
+          "hint": "perf record -F99 -ag → stackcollapse → flamegraph.pl; или profile/bpftrace; ORC/FP.",
+          "reference": "perf: `perf record -F 99 -a -g -- sleep 30` → `perf script` → `stackcollapse-perf.pl` → `flamegraph.pl` > svg. eBPF-путь: `profile -F 99 -f 30` (bcc, уже свёрнутый) или `bpftrace -e 'profile:hz:99 {@[kstack]=count();}'` → flamegraph.pl. Ширина = доля CPU-времени, вертикаль = стек; широкие плато наверху — горячие листовые функции. Стек обрывается без раскрутки: нужен `CONFIG_UNWINDER_ORC` (точные стеки без frame pointer) или frame pointer; `__fentry__`/трамплины в стеке — артефакт трассировки. Символы требуют доступного kallsyms (`kptr_restrict`/`perf_event_paranoid`)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Зачем фильтры ftrace (`set_ftrace_filter`/`set_graph_function`) и что такое overrun кольцевого буфера?",
+          "hint": "без фильтра — пожарный шланг; буфер per-CPU, быстрые события затирают старые.",
+          "reference": "Без фильтра ftrace трассирует ВСЕ функции — гигабайты/с, система захлёбывается. `set_ftrace_filter` (glob/исключения через `set_ftrace_notrace`), `set_ftrace_pid`, `set_graph_function`+`max_graph_depth` сужают до нужного — обязательно ДО включения на горячем коде. Буфер — per-CPU кольцо; если события идут быстрее чтения, старые затираются (overrun, виден в `per_cpu/cpuN/stats`). Лечение: фильтровать сильнее, увеличить `buffer_size_kb`, или агрегировать в ядре (hist/bpftrace) вместо потока. `trace` — снимок (не съедает), `trace_pipe` — поток (вынимает)."
+        }
+      ]
+    },
+    "ЭКСПЕРТ": {
+      "desc": "Глубокие темы: безопасность/overhead eBPF, декодирование oops, trace_printk, kdump/crash, оптимизации.",
+      "questions": [
+        {
+          "type": "self_grade",
+          "text": "Почему eBPF безопаснее и часто дешевле самописного kprobe-модуля? Что делает верификатор и причём тут CO-RE?",
+          "hint": "верификатор доказывает безопасность ДО загрузки; JIT; BTF/CO-RE — переносимость.",
+          "reference": "Верификатор статически ДОКАЗЫВАЕТ, что программа завершается (bounded loops), не разыменует непроверенный указатель, не спит в atomic, не выходит за границы — поэтому eBPF не может уронить ядро так, как кривой kprobe-модуль (сон в atomic, рекурсия, забытый unregister, breakpoint в освобождённой памяти). Программа JIT-компилируется в нативный код; `fentry`-программы почти бесплатны (трамплин на `__fentry__`). CO-RE (Compile Once–Run Everywhere) через BTF (типы ядра в vmlinux) даёт ПЕРЕНОСИМОСТЬ: один бинарь работает на разных ядрах без clang на цели — libbpf подставит смещения полей. Итог: ниже overhead + безопасность + переносимость → eBPF вытеснил ручные kprobe-модули для трассировки."
+        },
+        {
+          "type": "self_grade",
+          "text": "Как декодировать стек oops без исходников: роль kallsyms, build-id, addr2line/faddr2line, decode_stacktrace?",
+          "hint": "kallsyms даёт имя+offset; addr2line/faddr2line → файл:строка; build-id сверяет сборку.",
+          "reference": "kallsyms даёт в oops имя+offset (`my_func+0x42/0x120`) и стек (Call Trace), но не строку исходника. `файл:строку` получают `addr2line -e vmlinux <addr>` или `faddr2line module.ko 'func+0x42'` (понимает функция+offset для модуля), либо `decode_stacktrace.sh vmlinux <dir-с-ko> < oops.txt` разом по всему стеку. Критично совпадение СБОРКИ: build-id (`readelf -n`, печатается и в oops) должен совпадать у бинарника и debuginfo, иначе строки будут от другой сборки. `debuginfod` отдаёт vmlinux с символами по build-id. Заранее: `CONFIG_KALLSYMS`, debuginfo, `CONFIG_UNWINDER_ORC` для целых стеков."
+        },
+        {
+          "type": "self_grade",
+          "text": "`trace_printk` vs `printk`: куда пишет каждый, что дешевле и почему `trace_printk` не для прода?",
+          "hint": "dmesg+консоль (лок, дорого) vs ftrace ring buffer (дёшево); баннер-предупреждение.",
+          "reference": "`printk`/`pr_info` пишет в системный лог и на консоль — дорого (формат + лок консоли + сериализация, особенно serial), искажает тайминги, флудит общий dmesg; годен для редких важных событий. `trace_printk` пишет в per-CPU ftrace ring buffer (`cat .../trace`) — дёшево, почти не искажает тайминги, и встаёт в ОБЩИЙ таймлайн с трассировкой ядра (видно, что ядро делало между вызовами). Но он держит выделенный буфер и заметен — при первом вызове ядро печатает громкий баннер «unsafe for production». Поэтому `trace_printk` — ОТЛАДОЧНЫЙ инструмент (вставил/посмотрел/убрал); для постоянной наблюдаемости — свой tracepoint или dynamic_debug (`pr_debug`)."
+        },
+        {
+          "type": "self_grade",
+          "text": "Опиши цепочку panic → kdump → vmcore → crash. Что настраивается заранее и как проверить готовность?",
+          "hint": "kexec в crashkernel-память; capture-ядро дампит → vmcore; crash поверх vmlinux; kexec_crash_loaded==1.",
+          "reference": "При панике основное ядро через kexec мгновенно (без BIOS-reboot) передаёт управление capture-ядру, заранее загруженному в ЗАРЕЗЕРВИРОВАННУЮ память (`crashkernel=NNNM` в cmdline). Capture-ядро снимает образ памяти упавшего → пишет vmcore (ELF/ET_CORE) в /var/crash и перезагружает. Заранее нужно: `crashkernel=` в загрузке, включённая служба kdump (kexec-tools), debuginfo (vmlinux с символами), опц. `makedumpfile -d` для фильтрации/сжатия. Готовность: `cat /sys/kernel/kexec_crash_loaded` == 1. Анализ: `crash vmlinux vmcore` → `bt`/`bt -a`/`ps`/`log`/`struct task_struct <addr>` — post-mortem уровня структур всего ядра (а не только текста oops). Спровоцировать на стенде: `echo c > /proc/sysrq-trigger`."
+        },
+        {
+          "type": "self_grade",
+          "text": "Что такое оптимизированная kprobe и BPF-trampoline на `__fentry__`, и почему они дешевле классических механизмов?",
+          "hint": "int3 — дорогое исключение; optprobe → jmp/ftrace; fentry-BPF — прямой трамплин.",
+          "reference": "Классическая kprobe ставит `int3` — это исключение, дорогое. Оптимизированная kprobe (`CONFIG_OPTPROBES`): если probe на входе ftrace-функции — использует механизм ftrace (`__fentry__`, nop→call), иначе заменяет `int3` на `jmp` к трамплину (jump optimization) — близко к стоимости tracepoint. BPF `fentry`/`fexit` — самый дешёвый хук на вход/выход функции: BPF-трамплин ставится прямо в `__fentry__`-точку с типизированным доступом к аргументам, без `int3` и без разбора в текстовый формат. Общая идея: избегать дорогого breakpoint-исключения, патча инструкцию на прямой переход/вызов — тот же `__fentry__`-механизм, что под ftrace и live patching (§4)."
+        }
+      ]
+    },
+    "ЗАДАНИЯ": {
+      "desc": "Практические задания: написание модулей ядра, инструментирующих функции через kprobe/kretprobe/trace_printk.",
+      "questions": [
+        {
+          "type": "exercise",
+          "exercise_id": "01-kprobe-count",
+          "title": "kprobe: счётчик вызовов функции (per-CPU + procfs)"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "02-kretprobe-latency",
+          "title": "kretprobe: латентность функции ядра"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "03-trace-printk",
+          "title": "trace_printk: лог в ftrace-буфер вместо dmesg"
+        },
+        {
+          "type": "exercise",
+          "exercise_id": "04-kprobe-arg",
+          "title": "kprobe: фильтр по аргументу функции"
+        }
+      ]
+    }
+  }
+}
